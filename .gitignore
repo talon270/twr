@@ -1,0 +1,6 @@
+/target/
+/dist/
+/research/sources/
+/research/work/
+/research/out/*/logs/
+/.claude/

@@ -1,0 +1,16 @@
+# twr workspace. `sim` is pure Rust and testable headless; `web` is the thin
+# browser shell compiled to wasm; `osm` is the airport extractor, run by hand.
+[workspace]
+resolver = "3"
+members = ["crates/sim", "crates/web", "crates/osm"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+
+[profile.release]
+# Speed over size: the file is opened locally, so a few hundred KB more costs
+# nothing, while a dropped frame at 80 aircraft is felt.
+opt-level = 3
+lto = true
+codegen-units = 1

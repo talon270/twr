@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<!--
+  TWR · PAGE SHELL
+  · layout: status bar, map canvas, strip panel
+  · input: drag pans, wheel zooms, click selects, keys go to the wasm App
+  · theme tokens: Nothing OS Classic, light and dark (md/designs.md)
+  · storage: one key, `twr.v1`, integer schema version, migration hook
+  · boot: decode the inlined wasm, start the frame loop
+  · failure: any boot or runtime error shows as an inline banner, never a modal
+  Public namespace: window.TWR
+  build.sh replaces the BUNDLE marker below with the wasm-bindgen glue and the
+  base64 wasm, so the finished page opens from file:// with no fetch.
+-->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>twr</title>
+<style>
+  /* Nothing OS Classic. Sourcing is weak (tagged `blog` in designs.md):
+     black, white and one red, red reserved for conflicts and incidents. */
+  /* --red draws shapes (3:1 is enough); --red-text is red words, which need
+     4.5:1. #d71921 is 3.79:1 on the dark panel, so dark text red is
+     #ff4d55 (6.04:1); light keeps #d71921 (4.72:1 on its panel). */
+  :root { --fg: #000; --bg: #fff; --dim: #585a5a; --line: #c4c6c8; --red: #d71921; --red-text: #d71921; --panel: #f4f4f5;
+          --elev: #fff; --elev-dim: #585a5a; --scrim: rgb(0 0 0 / .45); }
+  /* --elev: the result dialog's surface. On a black page a black scrim
+     changes nothing, so dark mode lifts the surface instead (handbook,
+     figure-ground): #57575b is 2.9:1 against black, white text on it 7.2:1,
+     and its dim text #d0d0d4 4.7:1. */
+  :root[data-theme="dark"] { --fg: #fff; --bg: #000; --dim: #8a8a8e; --line: #2a2a2c; --red: #d71921; --red-text: #ff4d55; --panel: #0b0b0c;
+          --elev: #57575b; --elev-dim: #d0d0d4; --scrim: rgb(0 0 0 / .6); }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); }
+  /* A flex column, not a three-row grid: the banner is display:none when
+     there is no problem, and a hidden grid item frees its row, which moved
+     main into an auto-height row and stranded the bottom of the window. */
+  body { font: 13px/1.4 ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
+         display: flex; flex-direction: column; overflow: hidden; }
+
+  .bar { display: flex; align-items: center; gap: 24px; padding: 8px 16px;
+         border-bottom: 1px solid var(--line); }
+  .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  .bar .val { font-variant-numeric: tabular-nums; }
+  .bar .grow { flex: 1; }
+  /* HUD fields never wrap: a value that changes width every frame would
+     change the bar's height, resize the canvas inside its ResizeObserver
+     and raise "ResizeObserver loop" (found by verify_b6). */
+  .bar > span, .bar label { white-space: nowrap; }
+  .brand { font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+
+  button { font: inherit; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+           height: 28px; padding: 0 12px; border: 1px solid var(--fg); border-radius: 6px;
+           background: var(--bg); color: var(--fg); cursor: pointer; }
+  /* Look rule: press inverts fill and text. "Click, not swoosh": 100 ms linear. */
+  button:active { background: var(--fg); color: var(--bg); }
+  button { transition: background-color 100ms linear, color 100ms linear; }
+  @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+
+  /* Persistent until the cause is gone; a failure the user cannot see is the
+     worst kind (memory.md § Product judgement). */
+  .banner { display: none; padding: 8px 16px; border-bottom: 1px solid var(--red);
+            color: var(--fg); background: color-mix(in srgb, var(--red) 18%, var(--bg)); }
+  .banner.on { display: block; }
+  .banner b { color: var(--red); }
+
+  /* minmax(0, 1fr) rows: an auto row grows to the canvas's own pixel
+     height, which `fit` sets from the row, so every window resize looped
+     through the ResizeObserver and raised the error banner (pre-existing
+     since B4 at least; found by verify_b6). */
+  main { flex: 1; display: grid; grid-template-columns: 1fr 320px; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+  /* touch-action none: the canvas owns drag and wheel, the page never scrolls. */
+  #map { width: 100%; height: 100%; display: block; min-width: 0; touch-action: none; cursor: crosshair; }
+  #map.dragging { cursor: grabbing; }
+  .strips { border-left: 1px solid var(--line); background: var(--panel);
+            overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .strip { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+           display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; background: var(--bg); }
+  .strip .cs { font-weight: 700; font-size: 14px; }
+  .strip .num { font-variant-numeric: tabular-nums; text-align: right; }
+  .strip .state, .strip .hint { grid-column: 1 / -1; }
+  .strip .hint { color: var(--dim); font-size: 11px; }
+  .strip.sel { border-color: var(--fg); }
+  /* A refused verb: plain text in the strip, not red (red is for conflicts). */
+  .strip .notice { grid-column: 1 / -1; font-size: 11px; }
+  .strip .notice:empty { display: none; }
+  /* Red only for a live conflict or a recent incident. No animation: the
+     bar appears on the tick the state starts and goes when it ends. */
+  .strip.alarm { border-left: 3px solid var(--red); }
+  .strip .alert { grid-column: 1 / -1; color: var(--red-text); font-variant-numeric: tabular-nums; }
+  .strip .alert:empty, .strip .note:empty, .strip .hint:empty { display: none; }
+  .strip .note { grid-column: 1 / -1; font-variant-numeric: tabular-nums; }
+  .log { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;
+         font-size: 11px; font-variant-numeric: tabular-nums; }
+  .log li { color: var(--red-text); }
+  /* Go-arounds are not incidents: plain ink, whatever caused them. */
+  .log.plain li { color: var(--fg); }
+  #bay { display: flex; flex-direction: column; gap: 8px; }
+  .strip { cursor: pointer; }
+  main { position: relative; }
+  .attr { position: absolute; left: 12px; bottom: 8px; font-size: 11px; color: var(--dim); pointer-events: none; }
+  .saved { color: var(--dim); font-size: 11px; letter-spacing: .08em; visibility: hidden; }
+  .saved.on { visibility: visible; }
+  /* Shift picker: same 28 px, 1 px ink, 6 px corner as the buttons. */
+  select, input.seed { font: inherit; font-size: 11px; height: 28px; padding: 0 8px; border: 1px solid var(--fg);
+                       border-radius: 6px; background: var(--bg); color: var(--fg); }
+  input.seed { width: 11ch; font-variant-numeric: tabular-nums; }
+  .shift { display: flex; align-items: center; gap: 8px; }
+  .strip.gone { display: none; }
+
+  /* B7 score: four numbers side by side, never blended; plain ink, red only
+     for incidents above zero. */
+  .score { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: baseline;
+           padding-bottom: 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .score[hidden] { display: none; }
+  .score .bad { color: var(--red-text); }
+  dialog.result { border: 1px solid var(--fg); border-radius: 8px; background: var(--elev); color: var(--fg);
+                  padding: 20px 24px; min-width: 460px; font: inherit; }
+  dialog.result::backdrop { background: var(--scrim); }
+  dialog.result h2 { margin: 0 0 4px; font-size: 16px; letter-spacing: .08em; text-transform: uppercase; text-wrap: balance; }
+  dialog.result .sub { margin: 0 0 16px; color: var(--elev-dim); font-size: 11px; }
+  dialog.result table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  dialog.result th { text-align: left; font-weight: 400; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--elev-dim); padding: 0 12px 6px 0; }
+  dialog.result td { padding: 4px 12px 4px 0; vertical-align: top; }
+  dialog.result .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  dialog.result button { background: var(--elev); }
+</style>
+</head>
+<body>
+  <header class="bar">
+    <span class="brand">twr</span>
+    <span><span class="label">Seed</span> <span class="val" id="seed">-</span></span>
+    <span><span class="label">Game clock</span> <span class="val" id="clock">00:00</span></span>
+    <span><span class="label">Taxiway</span> <span class="val" id="hover">-</span></span>
+    <span><span class="label">Rate</span> <span class="val" id="rate">-</span></span>
+    <span><span class="label" id="shift-clock-label">Shift</span> <span class="val" id="shift-clock">-</span></span>
+    <span><span class="label">Waiting</span> <span class="val" id="queues">-</span></span>
+    <span class="val" id="paused" hidden>PAUSED</span>
+    <span class="grow"></span>
+    <form class="shift" id="shift-form">
+      <label class="label" for="mode">Mode</label>
+      <select id="mode">
+        <option value="practice">Practice</option>
+        <option value="light">Light · 27/h</option>
+        <option value="normal">Normal · 53/h</option>
+        <option value="peak">Peak · 84/h</option>
+        <option value="surge">Surge</option>
+      </select>
+      <label class="label" for="seed-in">Seed</label>
+      <input class="seed" id="seed-in" inputmode="numeric" placeholder="random" autocomplete="off">
+      <button id="start" type="submit">Start</button>
+    </form>
+    <span class="saved" id="saved">[SAVED]</span>
+    <button id="theme" type="button">Light</button>
+  </header>
+  <div class="banner" id="banner" role="alert"></div>
+  <main>
+    <canvas id="map"></canvas>
+    <!-- On the map, where map attributions sit: in the status bar it was
+         squeezed to an 8-line column once B6 added the shift controls. -->
+    <span class="attr" id="attr">© OpenStreetMap contributors · not for real-world navigation</span>
+    <aside class="strips" id="strips" aria-label="Flight strips">
+      <!-- B9: one wind per shift. Here, not in the status bar: at 1500 px
+           the bar had no room left (it overflowed 107 px). -->
+      <section class="score" id="wind-box" aria-label="Wind">
+        <span class="label">Wind</span>
+        <span><span class="val" id="wind">-</span> · <span class="val" id="flow">-</span> flow</span>
+        <span class="label">Runways</span><span class="val" id="rwys">-</span>
+      </section>
+      <section class="score" id="score" aria-label="Score" hidden>
+        <span class="label">Movements</span>
+        <span><span class="val" id="sc-mov">0</span> of <span class="val" id="sc-off">0</span> offered</span>
+        <span class="label">Delay you caused</span>
+        <span title="Game minutes aircraft waited on a clearance you could have given. Waits for wake, a busy runway, or a pilot's go-around do not count; a go-around's 8 km back in is left out.">
+          <span class="val" id="sc-delay">0.0</span> min · <span class="val" id="sc-delayed">0</span> aircraft over 1 min</span>
+        <span class="label">Incidents</span><span class="val" id="sc-inc">0</span>
+        <span class="label">Challenges</span><span class="val" id="sc-ch">0</span>
+      </section>
+      <div class="label">Strips</div>
+      <!-- One strip per aircraft, built from this template, in order of
+           appearance. -->
+      <div id="bay"></div>
+      <div class="label">Incidents <span class="val" id="inc-count">0</span></div>
+      <ol class="log" id="incidents" aria-live="polite"></ol>
+      <div class="label">Go-arounds <span class="val" id="ga-count">0</span> · challenges <span class="val" id="ga-challenges">0</span></div>
+      <ol class="log plain" id="go-arounds"></ol>
+    </aside>
+    <dialog class="result" id="result" aria-labelledby="res-title">
+      <h2 id="res-title">Shift over</h2>
+      <p class="sub" id="res-sub"></p>
+      <table>
+        <thead><tr><th></th><th>This shift</th><th>Your best</th></tr></thead>
+        <tbody id="res-rows"></tbody>
+      </table>
+      <form method="dialog" class="actions">
+        <button value="again">Again · same seed</button>
+        <button value="new">New seed</button>
+      </form>
+    </dialog>
+    <template id="strip-tpl">
+      <div class="strip">
+        <span class="cs" data-k="cs">-</span><span class="num" data-k="wake"></span>
+        <span class="state" data-k="state">-</span>
+        <span class="alert" data-k="alert"></span>
+        <span class="note" data-k="note"></span>
+        <span class="state" data-k="via"></span>
+        <span class="hint" data-k="hint">-</span>
+        <span class="notice" data-k="notice" role="status"></span>
+      </div>
+    </template>
+  </main>
+
+<script>
+"use strict";
+window.TWR = (() => {
+  // ---- Storage -----------------------------------------------------------
+  // Chrome gives every file:// page one shared localStorage origin, so the
+  // namespaced key is what keeps twr from colliding with other local tools.
+  const STORE_KEY = "twr.v1";
+  const SCHEMA_VERSION = 2;
+  const DEFAULTS = () => ({ v: SCHEMA_VERSION, settings: { theme: "dark" }, bests: {} });
+
+  // Each entry upgrades from version n to n + 1, and leaves everything it
+  // does not know about untouched.
+  const MIGRATIONS = {
+    // v2 (B7): personal bests, per mode. Settings carry over as they were.
+    1: s => ({ ...s, v: 2, bests: {} }),
+  };
+
+  const banner = document.getElementById("banner");
+  const problems = new Map();
+  // Messages are built as text nodes: an error message or a corrupt saved
+  // value must never be able to inject markup into the page.
+  function report(key, title, detail = "") {
+    problems.set(key, [title, detail]);
+    banner.replaceChildren();
+    for (const [t, d] of problems.values()) {
+      const line = document.createElement("div");
+      const b = document.createElement("b");
+      b.textContent = t;
+      line.append(b, d ? " " + d : "");
+      banner.append(line);
+    }
+    banner.classList.add("on");
+  }
+
+  // `writable` stays false when stored data could not be read: overwriting
+  // it with defaults would destroy whatever is there. The banner says so.
+  let state = DEFAULTS();
+  let writable = true;
+  function load() {
+    let raw;
+    try { raw = localStorage.getItem(STORE_KEY); }
+    catch (e) { writable = false; report("store", "Storage unavailable.", "Settings will not be kept this session."); return; }
+    if (raw === null) return;
+    try {
+      let s = JSON.parse(raw);
+      if (typeof s !== "object" || s === null || !Number.isInteger(s.v)) throw new Error("no version");
+      if (s.v > SCHEMA_VERSION) throw new Error(`saved by a newer twr (v${s.v})`);
+      while (s.v < SCHEMA_VERSION) s = MIGRATIONS[s.v](s);
+      const bests = s.bests && typeof s.bests === "object" && !Array.isArray(s.bests) ? s.bests : {};
+      state = { ...DEFAULTS(), ...s, settings: { ...DEFAULTS().settings, ...s.settings }, bests };
+    } catch (e) {
+      writable = false;
+      report("store", "Saved settings could not be read.", `${e.message}. Defaults are in use; the saved copy under ${STORE_KEY} is left untouched.`);
+    }
+  }
+  const savedEl = document.getElementById("saved");
+  let savedTimer = 0;
+  function save() {
+    if (!writable) return;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+    catch (e) { report("store", "Could not save settings.", "Storage is full or blocked."); return; }
+    savedEl.classList.add("on");
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => savedEl.classList.remove("on"), 1200);
+  }
+
+  // ---- Theme -------------------------------------------------------------
+  const themeBtn = document.getElementById("theme");
+  function applyTheme() {
+    document.documentElement.dataset.theme = state.settings.theme;
+    themeBtn.textContent = state.settings.theme === "dark" ? "Light" : "Dark";
+    readColours();
+  }
+  themeBtn.addEventListener("click", () => {
+    state.settings.theme = state.settings.theme === "dark" ? "light" : "dark";
+    applyTheme();
+    save();
+  });
+
+  // Canvas colours come from the same custom properties as the DOM, read
+  // once per theme change rather than once per frame.
+  const colours = {};
+  function readColours() {
+    const cs = getComputedStyle(document.documentElement);
+    for (const k of ["bg", "fg", "dim", "red", "line"]) colours[k] = cs.getPropertyValue("--" + k).trim();
+  }
+
+  // ---- Canvas sizing -----------------------------------------------------
+  const canvas = document.getElementById("map");
+  let dpr = 1;
+  function fit() {
+    dpr = window.devicePixelRatio || 1;
+    const r = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(r.width * dpr));
+    canvas.height = Math.max(1, Math.round(r.height * dpr));
+  }
+  new ResizeObserver(fit).observe(canvas);
+
+  // ---- Input -------------------------------------------------------------
+  // The page only sorts raw events into drag, click, wheel and key; what
+  // they mean is decided in the wasm App.
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  let paused = false;
+  // Under this many CSS px of travel a press is a click, not a drag.
+  const CLICK_SLOP_PX = 4;
+  function wireInput() {
+    const local = e => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+    let press = null;
+    canvas.addEventListener("pointerdown", e => {
+      const [x, y] = local(e);
+      press = { x, y, lx: x, ly: y, button: e.button, drag: false, id: e.pointerId };
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener("pointermove", e => {
+      const [x, y] = local(e);
+      if (!press) { app.hover(x, y); return; }
+      if (!press.drag && Math.hypot(x - press.x, y - press.y) > CLICK_SLOP_PX) {
+        press.drag = true;
+        canvas.classList.add("dragging");
+      }
+      if (press.drag) app.pan(x - press.lx, y - press.ly);
+      press.lx = x; press.ly = y;
+    });
+    const release = e => {
+      if (!press) return;
+      const [x, y] = local(e);
+      if (!press.drag && e.type === "pointerup") app.click(x, y, press.button);
+      canvas.classList.remove("dragging");
+      press = null;
+    };
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
+    canvas.addEventListener("contextmenu", e => e.preventDefault());
+    canvas.addEventListener("wheel", e => {
+      e.preventDefault();
+      const [x, y] = local(e);
+      // deltaMode 1 is lines (Firefox); one line is about 16 px.
+      app.wheel(x, y, e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY);
+    }, { passive: false });
+    window.addEventListener("keydown", e => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // The result dialog owns the keyboard while it is open.
+      if (el("result").open) return;
+      // Typing a seed or picking a mode is not a radio call.
+      if (e.target.closest && e.target.closest("input, select")) return;
+      if (e.key === " ") {
+        paused = !paused;
+        el("paused").hidden = !paused;
+        e.preventDefault();
+        return;
+      }
+      if (app.key(e.key)) e.preventDefault();
+    });
+    // A mouse click must not leave focus on the theme button, or the next
+    // Enter (send the clearance) would press it instead. Keyboard focus,
+    // via Tab, still reaches it.
+    themeBtn.addEventListener("pointerdown", e => e.preventDefault());
+    // Click a strip: select its aircraft, as clicking it on the map does.
+    // The only way to reach one still 8 km out on final at the fitted zoom.
+    bay().addEventListener("click", e => {
+      const s = e.target.closest(".strip");
+      if (s) app.select(Number(s.id.slice(5)));
+    });
+    bay().addEventListener("pointerdown", e => e.preventDefault());
+  }
+
+  // ---- Boot --------------------------------------------------------------
+  const el = id => document.getElementById(id);
+  // Writes only on change: the strip is read every frame, the DOM is not
+  // touched unless something moved.
+  const setText = (id, v) => { const n = el(id); v = String(v); if (n.textContent !== v) n.textContent = v; };
+  const pad = n => String(n).padStart(2, "0");
+  let app = null;
+
+  // Strip i's elements carry ids like state0, hint0: the B2/B3 scripts read
+  // strip 0 by those ids.
+  const bay = () => el("bay");
+  function ensureStrips(n) {
+    while (bay().children.length < n) {
+      const i = bay().children.length;
+      const node = el("strip-tpl").content.firstElementChild.cloneNode(true);
+      node.id = "strip" + i;
+      for (const c of node.querySelectorAll("[data-k]")) c.id = c.dataset.k + i;
+      bay().append(node);
+    }
+    while (bay().children.length > n) bay().lastElementChild.remove();
+  }
+  let shownIncidents = "", shownGoArounds = "";
+  function drawStrips() {
+    const n = app.count();
+    ensureStrips(n);
+    const sel = app.selected_callsign();
+    // In a shift, strips of aircraft that have left go; Practice keeps
+    // them, as B2-B5 did.
+    const shift = app.shift_mode() !== "practice";
+    for (let i = 0; i < n; i++) {
+      const gone = shift && app.gone(i);
+      el("strip" + i).classList.toggle("gone", gone);
+      if (gone) continue;
+      const cs = app.callsign(i);
+      const mine = sel === cs || (sel === "" && i === 0);
+      setText("cs" + i, cs);
+      setText("wake" + i, app.wake(i));
+      setText("state" + i, app.strip_state(i));
+      const alert = app.conflict_text(i) || (app.incident_tag(i) ? "INCIDENT" : "");
+      setText("alert" + i, alert);
+      el("strip" + i).classList.toggle("alarm", alert !== "");
+      setText("note" + i, app.strip_note(i));
+      const via = mine ? app.via_names() : "";
+      setText("via" + i, via ? "Via " + via : "");
+      setText("hint" + i, mine ? app.hint() : "");
+      setText("notice" + i, mine ? app.notice() : "");
+      el("strip" + i).classList.toggle("sel", sel === cs);
+      const tel = app.telephony(i);
+      if (el("strip" + i).title !== tel) el("strip" + i).title = tel;
+    }
+    // Keyed on the newest row too, not the count alone: a loaded scenario
+    // can hold as many rows as the last world, all of them different.
+    const gaRows = app.go_around_rows();
+    const gaKey = gaRows.length + "|" + (gaRows[0] || "");
+    if (gaKey !== shownGoArounds) {
+      shownGoArounds = gaKey;
+      setText("ga-count", gaRows.length);
+      setText("ga-challenges", app.challenge_count());
+      el("go-arounds").replaceChildren(...gaRows.slice(0, 50).map(t => {
+        const li = document.createElement("li");
+        li.textContent = t;
+        return li;
+      }));
+    }
+    const incRows = app.incident_rows();
+    const incKey = incRows.length + "|" + (incRows[0] || "");
+    if (incKey !== shownIncidents) {
+      shownIncidents = incKey;
+      setText("inc-count", incRows.length);
+      el("incidents").replaceChildren(...incRows.slice(0, 50).map(t => {
+        const li = document.createElement("li");
+        li.textContent = t;
+        return li;
+      }));
+    }
+  }
+
+  // A typed seed is used as given (to u32); blank or junk draws a fresh one.
+  function parseSeed(v) {
+    const n = Number.parseInt(v ?? "", 10);
+    return Number.isFinite(n) && n >= 0 ? n >>> 0 : (Date.now() ^ (Math.random() * 0x7fffffff)) >>> 0;
+  }
+  const mmss = s => `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+  function drawShift() {
+    if (app.shift_mode() === "practice") {
+      setText("rate", "-"); setText("shift-clock", "-"); setText("queues", "-");
+      return;
+    }
+    setText("rate", `${Math.round(app.rate_per_h())}/h`);
+    const len = app.shift_len_s(), t = app.real_s();
+    // Shift counts down; Surge is open and counts up.
+    setText("shift-clock-label", len ? "Shift left" : "Surge");
+    setText("shift-clock", len ? (t >= len ? "ended" : mmss(len - t)) : mmss(t));
+    setText("queues", `final ${app.final_queue()} · stands full ${app.stand_queue()}`);
+  }
+
+  function start(mode, seed) {
+    app.restart(mode, seed);
+    resultShown = false;
+    el("seed").textContent = app.seed();
+    el("mode").value = app.shift_mode();
+    drawWind();
+    // The link replays this shift.
+    history.replaceState(null, "", `?mode=${app.shift_mode()}&seed=${app.seed()}`);
+  }
+
+  // B9: one wind per shift, so this runs on start, not every frame.
+  function drawWind() {
+    setText("wind", app.wind_text());
+    setText("flow", app.flow());
+    setText("rwys", app.runways_text());
+  }
+
+  // ---- Score and result (B7) ----------------------------------------------
+  let resultShown = false;
+  function drawScore() {
+    const shift = app.shift_mode() !== "practice";
+    el("score").hidden = !shift;
+    if (!shift) return;
+    setText("sc-mov", app.movements());
+    setText("sc-off", app.offered());
+    setText("sc-delay", app.delay_min().toFixed(1));
+    setText("sc-delayed", app.delayed());
+    setText("sc-inc", app.incident_count());
+    el("sc-inc").classList.toggle("bad", app.incident_count() > 0);
+    setText("sc-ch", app.challenge_count());
+    if (app.over() && !resultShown) { resultShown = true; showResult(); }
+  }
+
+  // Three records per mode, each with its seed and date, never blended.
+  // Delay per movement and fewest incidents need 10 movements: a shift where
+  // nobody played would otherwise hold both records.
+
+  const MIN_MOVES_FOR_DELAY_BEST = 10;
+  function recordBests(mode, r) {
+    const b = state.bests[mode] ||= {};
+    const tag = { seed: r.seed, date: r.date };
+    const won = new Set();
+    const take = (k, rec) => { b[k] = { ...rec, ...tag }; won.add(k); };
+    if (!b.movements || r.movements > b.movements.n) take("movements", { n: r.movements, offered: r.offered });
+    if (r.movements >= MIN_MOVES_FOR_DELAY_BEST) {
+      const per = r.delay / r.movements;
+      if (!b.delay || per < b.delay.per) take("delay", { per, delay: r.delay, movements: r.movements });
+    }
+    if (r.movements >= MIN_MOVES_FOR_DELAY_BEST && (!b.incidents || r.incidents < b.incidents.n || (r.incidents === b.incidents.n && r.movements > b.incidents.movements)))
+      take("incidents", { n: r.incidents, movements: r.movements });
+    if (mode === "surge" && (!b.held || r.held > b.held.s)) take("held", { s: r.held, movements: r.movements });
+    save();
+    return { b, won };
+  }
+
+  function showResult() {
+    const mode = app.shift_mode();
+    const r = { movements: app.movements(), offered: app.offered(), delay: app.delay_min(), delayed: app.delayed(),
+                incidents: app.incident_count(), challenges: app.challenge_count(), held: app.held_s(),
+                // Local date (en-CA prints YYYY-MM-DD), never UTC: an IST evening is still today.
+                seed: app.seed(), date: new Date().toLocaleDateString("en-CA") };
+    const { b, won } = recordBests(mode, r);
+    const surge = mode === "surge";
+    setText("res-title", surge ? "Surge over" : "Shift over");
+    setText("res-sub", `${mode} · seed ${r.seed} · wind ${app.wind_text()}, ${app.flow()} flow · ${surge ? `held ${mmss(r.held)}, ended on the third incident` : "30:00"}`);
+    const best = (k, f) => b[k] ? f(b[k]) + (won.has(k) ? " · new best" : "") + ` · seed ${b[k].seed}` : "-";
+    const rows = [
+      ["Movements", `${r.movements} of ${r.offered} offered`, best("movements", x => `${x.n} of ${x.offered}`)],
+      ["Delay you caused", `${r.delay.toFixed(1)} game min · ${r.delayed} aircraft over 1 min`,
+        r.movements >= MIN_MOVES_FOR_DELAY_BEST || b.delay ? best("delay", x => `${x.per.toFixed(2)} min per movement`) : `needs ${MIN_MOVES_FOR_DELAY_BEST} movements`],
+      ["Incidents", String(r.incidents),
+        r.movements >= MIN_MOVES_FOR_DELAY_BEST || b.incidents ? best("incidents", x => `${x.n} with ${x.movements} movements`) : `needs ${MIN_MOVES_FOR_DELAY_BEST} movements`],
+      ["Challenges", `${r.challenges} go-arounds, pilot or weather`, "-"],
+    ];
+    if (surge) rows.splice(0, 0, ["Held", mmss(r.held), best("held", x => mmss(x.s))]);
+    el("res-rows").replaceChildren(...rows.map(cells => {
+      const tr = document.createElement("tr");
+      cells.forEach((c, k) => { const td = document.createElement(k ? "td" : "th"); td.textContent = c; tr.append(td); });
+      return tr;
+    }));
+    el("result").showModal();
+  }
+
+  function boot(wasmBase64) {
+    load();
+    applyTheme();
+    fit();
+    try {
+      const bytes = Uint8Array.from(atob(wasmBase64), c => c.charCodeAt(0));
+      wasm_bindgen.initSync({ module: bytes });
+      // ?mode=peak&seed=7 replays a shift; no seed, a fresh one.
+      const q = new URLSearchParams(location.search);
+      const seed = parseSeed(q.get("seed"));
+      app = new wasm_bindgen.App("map", seed);
+      const mode = q.get("mode");
+      if (mode && !app.restart(mode, seed)) report("mode", "Unknown mode in the link:", mode + ". Practice started instead.");
+    } catch (e) {
+      report("boot", "The simulator failed to start.", String(e && e.message || e));
+      return;
+    }
+    el("seed").textContent = app.seed();
+    el("mode").value = app.shift_mode();
+    drawWind();
+    el("shift-form").addEventListener("submit", e => {
+      e.preventDefault();
+      start(el("mode").value, parseSeed(el("seed-in").value));
+      el("start").blur();
+    });
+    // Again and New seed close the dialog with their value; Esc closes it
+    // with none and leaves the stopped map on view.
+    el("result").addEventListener("close", () => {
+      const v = el("result").returnValue;
+      el("result").returnValue = "";
+      if (v === "again") start(app.shift_mode(), app.seed());
+      else if (v === "new") start(app.shift_mode(), parseSeed(""));
+    });
+    el("attr").textContent = `© OpenStreetMap contributors, data of ${app.osm_base().slice(0, 10)} · not for real-world navigation`;
+    wireInput();
+    let last = performance.now();
+    function tick(now) {
+      const dt = now - last;
+      last = now;
+      try { app.frame(paused ? 0 : dt, dpr, reduce.matches, colours.bg, colours.fg, colours.dim, colours.line, colours.red); }
+      catch (e) { report("frame", "The simulator stopped.", String(e && e.message || e)); return; }
+      const s = Math.floor(app.game_seconds());
+      setText("clock", `${pad(Math.floor(s / 60))}:${pad(s % 60)}`);
+      setText("hover", app.hover_name() || "-");
+      drawShift();
+      drawScore();
+      drawStrips();
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }
+
+  window.addEventListener("error", e => report("js", "Script error.", e.message));
+  // `app` is exposed for the verification script's read-only hooks.
+  return { boot, get state() { return state; }, get app() { return app; }, STORE_KEY, SCHEMA_VERSION };
+})();
+</script>
+<!--BUNDLE-->
+</body>
+</html>

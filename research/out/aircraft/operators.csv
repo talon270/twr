@@ -1,0 +1,96 @@
+operator,icao_code,iata_code,telephony,country,delhi_terminal,fleet_types_at_del,fleet_counts,source_id,source_date
+IndiGo,IGO,6E,IFLY,India,T1 and T3 (T2 for some flights from 26 Oct 2025),"A20N, A21N, A320, AT76; A21N P2F freighters (IndiGo CarGo)","in service: A320ceo 26, A320neo 174, A321neo 175, A321XLR 3, ATR 72-600 44, A321P2F 3 (fleet, not DEL-based)",faa-jo7340-2p; wiki-indigo-fleet; indigo-terminals-2025,JO 7340.2P fetched 2026-11-07; Wikipedia rev. fetched 2026-11-07; IndiGo press release Oct 2025
+Air India,AIC,AI,AIRINDIA,India,T3,"A20N, A21N, A320, A321, A319, B788, B789, B77W, A359","in service: A319 6, A320ceo 4, A320neo 88, A321ceo 13, A321neo 10, A350-900 6, 777-300ER 13, 787-8 26, 787-9 6 (fleet)",faa-jo7340-2p; wiki-ai-fleet,fetched 2026-11-07
+Air India Express,AXB,IX,EXPRESS INDIA,India,T3 (HappyFares page; not confirmed by DIAL),"B38M, B738, A20N, A320, A21N","in service: A320ceo 9, A320neo 17, A321neo 4, 737-800 26, 737 MAX 8 53 (fleet)",faa-jo7340-2p; wiki-aix,fetched 2026-11-07
+Akasa Air,AKJ,QP,AKASA AIR,India,not confirmed,B38M,in service: 737 MAX 8 and 8-200 45 total (table parse ambiguous between the two),faa-jo7340-2p; wiki-akasa,fetched 2026-11-07
+SpiceJet,SEJ,SG,SPICEJET,India,T1 (third-party guides; not confirmed by DIAL),"B738, B737, B739, B38M, DH8D; 737-700BDSF freighters (SpiceXpress)","in service: 737-700 2, 737-800 12, 737-900ER 3, 737 MAX 8 7, Dash 8-400 24, 737-700BDSF 3 (fleet; Wikipedia counts include grounded aircraft unclearly)",faa-jo7340-2p; wiki-spicejet,fetched 2026-11-07
+Alliance Air,LLR,9I,ALLIED,India,not confirmed,"AT76, AT46","in service: ATR 72-600 18, ATR 42-600 2, Do 228 1 (fleet)",faa-jo7340-2p; wiki-alliance,fetched 2026-11-07
+Blue Dart Aviation,BDA,BZ,BLUE DART,India,cargo complex,"B752 (757-200PCF), B738 (737-800BCF)","in service: 757-200PCF 6, 737-800BCF 2",faa-jo7340-2p; wiki-bluedart; wiki-igi,fetched 2026-11-07
+Quikjet Cargo Airlines,FQA,,QUIK LIFT,India,cargo complex,not found,not found (Wikipedia article is a redirect; not listed in the IGI cargo table),faa-jo7340-2p,fetched 2026-11-07
+Indian Air Force (Palam),IFC,,INDIAN AIRFORCE,India,Air Force Station Palam (shares IGI runways),"VIP: 777-300ER (Air India One, call sign of Air India when carrying the PM, President or VP), 737 BBJ, ERJ-135/Legacy; transport: C17, C30J, IL76, AN32 (types from general knowledge, not sourced per aircraft)",not found,faa-jo7340-2p; wiki-ai (Air India One paragraph),fetched 2026-11-07
+Emirates,UAE,EK,EMIRATES,UAE,T3,"B77W x3 daily, A388 x1 daily from 25 Oct 2026","4 daily DXB-DEL rotations (Emirates media centre, 9 Jul 2026)",faa-jo7340-2p; emirates-a380-del,2026-07-09
+Qatar Airways,QTR,QR,QATARI,Qatar,T3,authored: B77W / B788 / A359,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Etihad Airways,ETD,EY,ETIHAD,UAE,T3,authored: B789 / A21N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+flydubai,FDB,FZ,SKY DUBAI,UAE,T3,authored: B38M,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Air Arabia,ABY,G9,ARABIA,UAE,T3,authored: A320,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+British Airways,BAW,BA,SPEEDBIRD,United Kingdom,T3,authored: B788 / B789 / B77W,DEL-LHR raised from 14 to 21 weekly (GMR Sep 2026 update),faa-jo7340-2p; gmr-traffic-2026-09,2026-10-16
+Lufthansa,DLH,LH,LUFTHANSA,Germany,T3,authored: A359 / B748,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Singapore Airlines,SIA,SQ,SINGAPORE,Singapore,T3,authored: A359 / B78X / B77W,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Thai Airways,THA,TG,THAI,Thailand,T3,authored: A333 / B789,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+China Southern Airlines,CSN,CZ,CHINA SOUTHERN,China,T3,authored: A21N,DEL-CAN 7 weekly from Sep 2026 (GMR Sep 2026 update),faa-jo7340-2p; gmr-traffic-2026-09,2026-10-16
+Aero Nomad Airlines,,KA,not looked up,Kyrgyzstan,T3,authored: A320,not found,wiki-igi,fetched 2026-11-07
+Aeroflot,AFL,SU,AEROFLOT,Russia,T3,authored: A333,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Air Algérie,DAH,AH,AIR ALGERIE,Algeria,T3,not found (service begins 26 Oct 2026 per Wikipedia),not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Air Astana,KZR,KC,ASTANALINE,Kazakhstan,T3,authored: A21N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Air Cambodia,KHV,K6,CAMBODIA AIR,Cambodia,T3,authored: A321,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Air Canada,ACA,AC,AIR CANADA,Canada,T3,authored: B789 / B77W,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Air China,CCA,CA,AIR CHINA,China,T3,authored: A333,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Air France,AFR,AF,AIRFRANS,France,T3,authored: B77W,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Air Mauritius,MAU,MK,AIRMAURITIUS,Mauritius,T3,authored: A339,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+AirAsia X,XAX,D7,XANADU,Malaysia,T3,authored: A333,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+All Nippon Airways,ANA,NH,ALL NIPPON,Japan,T3,authored: B788,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+American Airlines,AAL,AA,AMERICAN,United States,T3,authored: B789,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Ariana Afghan Airlines,AFG,FG,ARIANA,Afghanistan,T3,authored: B737,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Azerbaijan Airlines,AHY,J2,AZAL,Azerbaijan,T3,authored: A20N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Batik Air Malaysia,MXD,OD,MALINDO,Malaysia,T3,authored: B38M,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Belavia,BRU,B2,BELARUS AVIA,Belarus,T3,authored: B38M,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Bhutan Airlines,BTN,B3,BHUTAN AIR,Bhutan,T3,authored: A319,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Cathay Pacific,CPA,CX,CATHAY,Hong Kong,T3,authored: A359,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Centrum Air,not found,,not found,Uzbekistan,T3,authored: A320,not found,wiki-igi (no 3-letter code found in JO 7340.2P under that name),fetched 2026-11-07
+China Eastern Airlines,CES,MU,CHINA EASTERN,China,T3,authored: A333,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Drukair,DRK,KB,ROYAL BHUTAN,Bhutan,T3,authored: A20N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Egyptair,MSR,MS,EGYPTAIR,Egypt,T3,authored: B789,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Ethiopian Airlines,ETH,ET,ETHIOPIAN,Ethiopia,T3,authored: B788,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+EVA Air,EVA,BR,EVA,Taiwan,T3,not found (service listed as starting),not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Finnair,FIN,AY,FINNAIR,Finland,T3,authored: A359,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Flynas,KNE,XY,FLYNAS,Saudi Arabia,T3,authored: A20N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+FlyOne,FIA,5F,FIA AIRLINES,Moldova,T3,not found (service listed as starting),not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Gulf Air,GFA,GF,GULF AIR,Bahrain,T3,authored: A21N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Hunnu Air,MML,MR,TRANS MONGOLIA,Mongolia,T3,authored: E190,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Iraqi Airways,IAW,IA,IRAQI,Iraq,T3,authored: B38M,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+ITA Airways,ITY,AZ,ITARROW,Italy,T3,authored: A332,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Japan Airlines,JAL,JL,JAPANAIR,Japan,T3,authored: B788,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Jazeera Airways,JZR,J9,JAZEERA,Kuwait,T3,authored: A20N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Kam Air,KMF,RQ,KAMGAR,Afghanistan,T3,authored: A343,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+KLM,KLM,KL,KLM,Netherlands,T3,authored: B789,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Korean Air,KAL,KE,KOREANAIR,South Korea,T3,authored: B77W,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Kuwait Airways,KAC,KU,KUWAITI,Kuwait,T3,authored: A20N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+LOT Polish Airlines,LOT,LO,LOT,Poland,T3,authored: B788,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Mahan Air,IRM,W5,MAHAN AIR,Iran,T3,authored: A343,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Malaysia Airlines,MAS,MH,MALAYSIAN,Malaysia,T3,authored: A333,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Myanmar Airways International,MMA,8M,MYANMAR,Myanmar,T3,authored: A319,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Nepal Airlines,RNA,RA,ROYAL NEPAL,Nepal,T3,authored: A320,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Oman Air,OMA,WY,OMAN AIR,Oman,T3,authored: B738,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Philippine Airlines,PAL,PR,PHILIPPINE,Philippines,T3,not found (service listed as resuming),not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Qantas,QFA,QF,QANTAS,Australia,T3,authored: B789,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Royal Jordanian,RJA,RJ,JORDANIAN,Jordan,T3,authored: A321,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Saudia,SVA,SV,SAUDIA,Saudi Arabia,T3,authored: A333,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Somon Air,SMR,SZ,SOMON AIR,Tajikistan,T3,authored: B738,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+SriLankan Airlines,ALK,UL,SRILANKAN,Sri Lanka,T3,authored: A320 / A333,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Swiss,SWR,LX,SWISS,Switzerland,T3,authored: A333,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Thai AirAsia X,TAX,XJ,EXPRESS WING,Thailand,T3,authored: A333,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Thai Lion Air,TLM,SL,MENTARI,Thailand,T3,authored: B38M,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Turkmenistan Airlines,TUA,T5,TURKMENISTAN,Turkmenistan,T3,authored: B738,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+United Airlines,UAL,UA,UNITED,United States,T3,authored: B789,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Ural Airlines,SVR,U6,SVERDLOVSK AIR,Russia,T3,not found (service listed as starting),not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Uzbekistan Airways,UZB,HY,UZBEK,Uzbekistan,T3,authored: A20N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+VietJet Air,VJC,VJ,VIETJETAIR,Vietnam,T3,authored: A321,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Vietnam Airlines,HVN,VN,VIET NAM AIRLINES,Vietnam,T3,authored: A21N,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Virgin Atlantic,VIR,VS,VIRGIN,United Kingdom,T3,authored: B789,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+AeroLogic (cargo),BOX,3S,GERMAN CARGO,Germany,cargo complex,authored: B77L (777F),not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Air Central (cargo),HLF,,HOMELAND,China,cargo complex,not found,not found,faa-jo7340-2p (listed as Central Airlines Co. - match by name only); wiki-igi,fetched 2026-11-07
+Astral Aviation (cargo),ACP,8V,ASTRAL CARGO,Kenya,cargo complex,not found,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Atlas Air (cargo),GTI,5Y,GIANT,United States,cargo complex,authored: B744 / B748 freighters,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Cathay Cargo,CPA,CX,CATHAY,Hong Kong,cargo complex,authored: B744 / B748 freighters,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+China Airlines Cargo,CAL,CI,DYNASTY,Taiwan,cargo complex,authored: B744 / B77L freighters,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Emirates SkyCargo,UAE,EK,EMIRATES,UAE,cargo complex,authored: B77L (777F),not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+FedEx Express,FDX,FX,FEDEX,United States,cargo complex,authored: B77L (777F) / B763F,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Hong Kong Air Cargo,HKC,RH,MASCOT,Hong Kong,cargo complex,authored: A332F / A333F,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+IndiGo CarGo,IGO,6E,IFLY,India,cargo complex,A321 (A321P2F),3 in service,faa-jo7340-2p; wiki-indigo-fleet,fetched 2026-11-07
+Korean Air Cargo,KAL,KE,KOREANAIR,South Korea,cargo complex,authored: B77L / B748 freighters,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Qatar Cargo,QTR,QR,QATARI,Qatar,cargo complex,authored: B77L (777F),not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+SF Airlines (cargo),CSS,O3,SHUN FENG,China,cargo complex,authored: B752F / B763F,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+Sichuan Airlines Cargo,CSC,3U,SI CHUAN,China,cargo complex,authored: A333F,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+SpiceXpress (cargo),SEJ,SG,SPICEJET,India,cargo complex,B737 (737-700BDSF),3 in service,faa-jo7340-2p; wiki-spicejet,fetched 2026-11-07
+Tianjin Air Cargo,CTJ,,TIANJIN CARGO,China,cargo complex,not found,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07
+UPS Airlines,UPS,5X,UPS,United States,cargo complex,authored: B744 / B748 / B763F freighters,not found,faa-jo7340-2p; wiki-igi,fetched 2026-11-07

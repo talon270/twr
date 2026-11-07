@@ -1,0 +1,19 @@
+# IGI (VIDP) name overrides for twr-osm, keyed by OpenStreetMap id.
+#
+# OSM leaves 59% of IGI's taxiway segments and all 46 holding points without a
+# name (2026-11-05). Fill them from the aerodrome chart in India's eAIP
+# (AAI, AD 2 VIDP), never by guessing. Each entry names an OSM element; if an
+# OSM edit deletes or retags it, twr-osm refuses to build until this file is
+# fixed, so a stale name can't silently attach to nothing.
+#
+# After editing: cargo run -p twr-osm -- VIDP
+#
+# [taxiway]          way id  = taxiway letter    e.g. 626283001 = "A"
+# [hold]             node id = holding point     e.g. 4410012345 = "A1"
+# [stand]            node id = stand number      e.g. 4410067890 = "12A"
+
+[taxiway]
+
+[hold]
+
+[stand]
