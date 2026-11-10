@@ -1,0 +1,53 @@
+[
+  {
+    "direction": "a",
+    "checks": [
+      "PUSH",
+      "LINEUP",
+      "CROSS",
+      "TAKEOFF",
+      "LAND",
+      "GOAROUND",
+      "EXIT",
+      "RESET_AND_UNDO",
+      "UNDO_FOCUS_PAUSE_AND_EXPIRY",
+      "CLOCK_ADVANCE_AND_PAUSE",
+      "SIBLING_NAVIGATION"
+    ],
+    "page_and_console_errors": []
+  },
+  {
+    "direction": "b",
+    "checks": [
+      "PUSH",
+      "LINEUP",
+      "CROSS",
+      "TAKEOFF",
+      "LAND",
+      "GOAROUND",
+      "EXIT",
+      "RESET_AND_UNDO",
+      "UNDO_FOCUS_PAUSE_AND_EXPIRY",
+      "CLOCK_ADVANCE_AND_PAUSE",
+      "SIBLING_NAVIGATION"
+    ],
+    "page_and_console_errors": []
+  },
+  {
+    "direction": "c",
+    "checks": [
+      "PUSH",
+      "LINEUP",
+      "CROSS",
+      "TAKEOFF",
+      "LAND",
+      "GOAROUND",
+      "EXIT",
+      "RESET_AND_UNDO",
+      "UNDO_FOCUS_PAUSE_AND_EXPIRY",
+      "CLOCK_ADVANCE_AND_PAUSE",
+      "SIBLING_NAVIGATION"
+    ],
+    "page_and_console_errors": []
+  }
+]

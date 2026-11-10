@@ -13,8 +13,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::aircraft::{crossings, Aircraft, Phase, Wake, MDM_PER_M, ROLL_TICKS};
+use crate::aircraft::{crossings, Aircraft, Phase, Wake, MDM_PER_M, ROLL_TICKS, TAXI_MDM_PER_TICK};
 use crate::airport::Airport;
+use crate::lvp::{Lsa, LVP_DECISION_M};
 use crate::route::{designator, Graph, Route};
 use crate::TICK_HZ;
 
@@ -175,6 +176,9 @@ pub fn on_runway(a: &Aircraft, ap: &Airport, g: &Graph) -> Option<usize> {
         Phase::OnStand | Phase::Departed(_) | Phase::Final(_) | Phase::ShutDown => None,
         Phase::GoAround(_) => first.filter(|_| a.over_runway()),
         Phase::LinedUp(_) | Phase::TakeoffRoll(_) | Phase::Airborne(_) | Phase::Landing(_) => first,
+        // C3: a backtrack rolls along the runway itself, end to end. Its
+        // route has no hold-short span, so the span test below misses it.
+        Phase::LineUp(_) if a.on_runway_route(ap) => first,
         _ if a.exit.is_some() => first.filter(|_| a.pos_mdm < a.exit.as_ref().expect("guarded").vacate_mdm),
         _ => runway_spans(ap, g, &a.route).into_iter().find(|&(s, e, _)| a.pos_mdm > s && a.pos_mdm <= e).map(|x| x.2),
     }
@@ -195,9 +199,12 @@ pub fn rolling(a: &Aircraft) -> bool {
     departing(a) || (matches!(a.phase, Phase::Landing(_)) && a.speed_mdm > 0)
 }
 
-/// G2: phases the ground check sees at all.
+/// G2: phases the ground check sees at all. Lined up and on stand are
+/// stopped on the network too: without them a second aircraft lined up into
+/// an occupied spot with nothing logged (R1.4). Stopped pairs are never
+/// compared, so two parked aircraft stay clean.
 fn on_ground_net(a: &Aircraft) -> bool {
-    matches!(a.phase, Phase::Pushback | Phase::Holding | Phase::Taxi | Phase::HoldPosition | Phase::HoldShort(_) | Phase::LineUp(_))
+    matches!(a.phase, Phase::OnStand | Phase::Pushback | Phase::Holding | Phase::Taxi | Phase::HoldPosition | Phase::HoldShort(_) | Phase::LineUp(_) | Phase::LinedUp(_))
 }
 
 /// G2: phases in which an aircraft is moving along its route.
@@ -301,6 +308,9 @@ pub enum Rule {
     Occupied,
     Departure,
     Incursion,
+    /// V3 (PLAN-lvp.md): under LVP, anything in the localizer sensitive
+    /// area of an arrival inside 2 NM, until its landing roll ends.
+    Lsa,
 }
 
 /// A live G1 conflict this tick: aircraft indices into `World::aircraft`.
@@ -331,6 +341,11 @@ pub struct Monitor {
     open: BTreeSet<(&'static str, String, String)>,
     /// Ground distance per pair last tick, to tell closing from opening.
     prev: BTreeMap<(String, String), u64>,
+    /// LVP for the whole shift (PLAN-lvp.md § A1): the draw sets it for a
+    /// scored shift, the Practice toggle sets it there.
+    pub lvp: bool,
+    /// Each landing end's localizer sensitive area.
+    pub lsa: Lsa,
 }
 
 fn pair(a: &str, b: &str) -> (String, String) {
@@ -346,7 +361,25 @@ impl Monitor {
     pub fn new(ap: &Airport) -> Monitor {
         let dirs = runway_dirs(ap);
         let links = wake_links(&dirs);
-        Monitor { dirs, links, departures: Vec::new(), conflicts: Vec::new(), incidents: Vec::new(), open: BTreeSet::new(), prev: BTreeMap::new() }
+        Monitor { dirs, links, departures: Vec::new(), conflicts: Vec::new(), incidents: Vec::new(), open: BTreeSet::new(), prev: BTreeMap::new(), lvp: false, lsa: Lsa::vidp() }
+    }
+
+    /// Under LVP, the first aircraft other than `except` whose body is in
+    /// `desig`'s LSA: on the ground, or rolling. None with LVP off, or
+    /// with no LSA for that end. A same-runway departure counts until it
+    /// is airborne, about 10 s early against AD 2.22 VIII 4.2.3's "passed
+    /// over the localizer" (930 m past the end at 90 m/s).
+    pub fn lsa_occupant(&self, ac: &[Aircraft], ap: &Airport, g: &Graph, desig: &str, except: Option<usize>) -> Option<usize> {
+        if !self.lvp {
+            return None;
+        }
+        let d = self.dir(desig)?;
+        (0..ac.len()).find(|&j| Some(j) != except && self.in_lsa(&ac[j], ap, g, d))
+    }
+
+    /// On the ground or rolling, with its body inside `d`'s LSA.
+    fn in_lsa(&self, a: &Aircraft, ap: &Airport, g: &Graph, d: &Dir) -> bool {
+        (on_ground_net(a) || matches!(a.phase, Phase::Landing(_) | Phase::TakeoffRoll(_))) && self.lsa.contains(d, a.pos_m(ap, g), BODY_M as f64)
     }
 
     fn dir(&self, desig: &str) -> Option<&Dir> {
@@ -409,6 +442,10 @@ impl Monitor {
             }
         }
         self.incidents.extend(found);
+        // A leader airborne longer ago than the lookback constrains no one,
+        // here or in `wake_wait`, which scanned every takeoff of the shift
+        // each tick a departure stood lined up (R1.21).
+        self.departures.retain(|d| d.airborne_tick.is_none_or(|t| tick - t <= lookback));
     }
 
     /// Ticks until a lined-up aircraft may press K and still lift off
@@ -515,7 +552,36 @@ impl Monitor {
                 self.incident("rwy", tick, rule, &x.callsign, &y.callsign, text, py);
             }
         }
+        self.lsa_check(ac, ap, g, tick, &mut seen);
         self.open.retain(|k| k.0 != "rwy" || seen.contains(k));
+    }
+
+    /// V2, V3 (PLAN-lvp.md): under LVP the LSA ahead of an arrival is
+    /// protected from 2 NM until its landing roll slows to taxi speed. It
+    /// shares the runway key, so while the pair stays open R5 at the
+    /// threshold does not log the same mistake twice.
+    fn lsa_check(&mut self, ac: &[Aircraft], ap: &Airport, g: &Graph, tick: u64, seen: &mut BTreeSet<(&'static str, String, String)>) {
+        if !self.lvp {
+            return;
+        }
+        for x in ac {
+            let d = match &x.phase {
+                // Cleared only: an uncleared arrival spends one tick inside
+                // 2 NM before its go-around fires, and that tick is not a
+                // protected approach (PLAN-lvp.md: protection after C).
+                Phase::Final(d) if x.cleared_to_land && x.final_m() <= LVP_DECISION_M as f64 => d,
+                Phase::Landing(d) if x.speed_mdm > TAXI_MDM_PER_TICK => d,
+                _ => continue,
+            };
+            let Some(dir) = self.dir(d).cloned() else { continue };
+            let inside: Vec<&Aircraft> = ac.iter().filter(|y| y.callsign != x.callsign && self.in_lsa(y, ap, g, &dir)).collect();
+            for y in inside {
+                let key = pair(&x.callsign, &y.callsign);
+                seen.insert(("rwy", key.0, key.1));
+                let text = format!("LSA · {} in the {d} localizer sensitive area with {} inside 2 NM", y.callsign, x.callsign);
+                self.incident("rwy", tick, Rule::Lsa, &x.callsign, &y.callsign, text, y.pos_m(ap, g));
+            }
+        }
     }
 
     /// G1, G2: spacing along the network between ground aircraft, at least

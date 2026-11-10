@@ -40,7 +40,7 @@ def red_pixels_near(pg, i, radius=16):
 
 with sync_playwright() as pw:
     b = pw.chromium.launch()
-    pg = b.new_page(viewport={"width": 1500, "height": 950})
+    pg = b.new_page(viewport={"width": 1500, "height": 950}, color_scheme="dark")  # R1.15: first paint follows the system; these checks start dark
     errs, dialogs = [], []
     pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e)))
     pg.on("console", lambda m: m.type == "error" and errs.append(m.text))
@@ -65,6 +65,10 @@ with sync_playwright() as pw:
         return i
 
     def text(k, i):
+        # hint, notice and via moved to the panel under the map (step 2): they
+        # read as empty unless strip i is the selected one, as on the strip.
+        if k in ("hint", "notice", "via"):
+            return pg.evaluate("([k, i]) => document.getElementById('sel').dataset.i === String(i) ? document.getElementById('sel-' + k).textContent : ''", [k, i])
         return pg.text_content(f"#{k}{i}")
 
     def ff_until(cond, max_ticks=200_000, chunk=20):
@@ -89,7 +93,17 @@ with sync_playwright() as pw:
     check(red_pixels_near(pg, tail) > 20, f"red ring on the map ({red_pixels_near(pg, tail)} px)")
     check(app(pg, "a.incident_count()") == 0, "a conflict is not an incident")
     pg.screenshot(path=str(OUT / "b4_ground_conflict_dark.png"))
+    # PLAN-ui-console step 2: the pair also sits in the panel under the map,
+    # one row per pair, red-ruled; the row selects the first of the pair.
+    rows = pg.eval_on_selector_all("#conflict-list button", "bs => bs.map(b => [b.textContent, b.dataset.i])")
+    check(len(rows) == 1 and "IGO601" in rows[0][0] and "IGO602" in rows[0][0] and rows[0][0].endswith(" m")
+          and pg.is_hidden("#conflict-none") and pg.evaluate("getComputedStyle(document.getElementById('conflicts')).boxShadow") != "none",
+          f"panel lists the pair once: {rows}")
+    pg.click("#conflict-list button"); frame(pg)
+    check(pg.get_attribute("#sel", "data-i") == rows[0][1], f"the row selects aircraft {rows[0][1]}: {pg.text_content('#sel-cs')}")
+    pg.click(f"#strip{tail}"); frame(pg)
     pg.keyboard.press("h"); app(pg, "a.fast_forward(5)"); frame(pg)
+    check(pg.locator("#conflict-list button").count() == 0 and pg.is_visible("#conflict-none"), "H: the panel says no live conflict")
     check(app(pg, "a.conflict_count()") == 0 and text("alert", tail) == "", "H: both stopped, red clears")
     check(red_pixels_near(pg, tail) == 0, "no red on the map once held")
     pg.keyboard.press("h"); frame(pg)
@@ -112,6 +126,9 @@ with sync_playwright() as pw:
     check(note.startswith("wake ") and note.endswith("AIC101"), f"wake timer on the strip: {note!r}")
     check("K takeoff (wake" in hint, f"K hint names the wake: {hint!r}")
     fg = pg.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--fg').trim()")
+    # PLAN-ui-console step 4: selecting springs the strip's inversion over
+    # 215 ms; read the colour at rest, not a value on the way.
+    pg.wait_for_timeout(300)
     note_colour = pg.evaluate(f"getComputedStyle(document.getElementById('note{i}')).color")
     check(note_colour in ("rgb(255, 255, 255)", "rgb(0, 0, 0)"), f"wake timer in plain ink, not red: {note_colour} (fg {fg})")
     check(text("alert", i) == "" and "alarm" not in pg.get_attribute(f"#strip{i}", "class"), "waiting for wake is not red")

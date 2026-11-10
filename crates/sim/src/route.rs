@@ -46,6 +46,10 @@ pub struct Request {
     pub via: Vec<u32>,
     /// Edges the route must not use.
     pub avoid: Vec<u32>,
+    /// V4 (PLAN-lvp.md): per edge, true where the edge costs
+    /// LVP_OFF_ROUTE_COST times its length. Empty: every edge at its
+    /// length, as before LVP.
+    pub off_lvp: Vec<bool>,
 }
 
 pub struct Graph {
@@ -95,19 +99,19 @@ impl Graph {
     }
 
     /// Dijkstra from `from` to `to`, skipping `avoid`. None when cut off.
-    fn shortest(&self, from: u32, to: u32, avoid: &[u32]) -> Option<(u64, Route)> {
-        self.shortest_where(from, |n| n == to, avoid, u64::MAX)
+    fn shortest(&self, from: u32, to: u32, avoid: &[u32], off_lvp: &[bool]) -> Option<(u64, Route)> {
+        self.shortest_where(from, |n| n == to, avoid, off_lvp, u64::MAX)
     }
 
     /// Shortest taxi route from `from` to the nearest runway node no more
     /// than `max_dm` away: how a holding point finds the runway it guards.
     pub fn nearest_runway(&self, from: u32, max_dm: u64) -> Option<Route> {
-        self.shortest_where(from, |n| self.runway_at[n as usize].is_some(), &[], max_dm).map(|(_, r)| r)
+        self.shortest_where(from, |n| self.runway_at[n as usize].is_some(), &[], &[], max_dm).map(|(_, r)| r)
     }
 
     /// Dijkstra from `from` to the first node `goal` accepts, within
     /// `max_dm`, skipping `avoid`. None when there is none.
-    fn shortest_where(&self, from: u32, goal: impl Fn(u32) -> bool, avoid: &[u32], max_dm: u64) -> Option<(u64, Route)> {
+    fn shortest_where(&self, from: u32, goal: impl Fn(u32) -> bool, avoid: &[u32], off_lvp: &[bool], max_dm: u64) -> Option<(u64, Route)> {
         let n = self.adj.len();
         let mut dist = vec![u64::MAX; n];
         let mut back: Vec<Option<(u32, u32)>> = vec![None; n];
@@ -130,7 +134,8 @@ impl Graph {
                 if avoid.contains(&e) {
                     continue;
                 }
-                let nd = d + u64::from(self.len_dm[e as usize]);
+                let k = if off_lvp.get(e as usize) == Some(&true) { crate::lvp::LVP_OFF_ROUTE_COST } else { 1 };
+                let nd = d + k * u64::from(self.len_dm[e as usize]);
                 if nd < dist[v as usize] {
                     dist[v as usize] = nd;
                     back[v as usize] = Some((e, u));
@@ -168,7 +173,7 @@ impl Graph {
             avoid.extend_from_slice(also_avoid);
             best.iter()
                 .filter_map(|(c, r)| {
-                    let (lc, leg) = self.shortest(r.end(), to, &avoid)?;
+                    let (lc, leg) = self.shortest(r.end(), to, &avoid, &req.off_lvp)?;
                     let mut r = r.clone();
                     r.append(&leg);
                     Some((c + lc, r))
@@ -216,25 +221,45 @@ impl Graph {
     /// designator. Longer, because every metre ahead is runway available for
     /// the roll; the strip shows the result, so the choice is never hidden.
     pub fn runway_run(&self, ap: &Airport, at: u32) -> Option<(Route, String)> {
-        let rwy = &ap.runways[self.runway_at[at as usize]?];
-        let mut best: Option<(u64, Route)> = None;
+        self.runway_run_facing(ap, at, None)
+    }
+
+    /// The takeoff run from `at` down `want`, when `want` is one of this
+    /// runway's directions from here; otherwise the longer one, as
+    /// `runway_run`. A departure lines up facing its assigned runway: facing
+    /// the longer stretch put 6 of 13 entries on 11R/29L head-on to 29L's
+    /// arrivals (R1.7).
+    pub fn runway_run_facing(&self, ap: &Airport, at: u32, want: Option<&str>) -> Option<(Route, String)> {
+        let mut best: Option<((bool, u64), Route, String)> = None;
+        for (r, d) in self.runway_runs(ap, at) {
+            let key = (want == Some(d.as_str()), self.run_len_dm(&r));
+            if best.as_ref().is_none_or(|(k, _, _)| key > *k) {
+                best = Some((key, r, d));
+            }
+        }
+        best.map(|(_, r, d)| (r, d))
+    }
+
+    /// Every run from runway node `at` to an end of its runway: two from
+    /// mid-runway, one from an end. Each with its designator.
+    pub fn runway_runs(&self, ap: &Airport, at: u32) -> Vec<(Route, String)> {
+        let Some(ri) = self.runway_at[at as usize] else { return Vec::new() };
+        let rwy = &ap.runways[ri];
+        let mut out = Vec::new();
         for &(e0, n0) in &self.rwy_adj[at as usize] {
             let mut r = Route { nodes: vec![at, n0], edges: vec![e0] };
-            let mut len = u64::from(self.len_dm[e0 as usize]);
             // A runway is a chain: each node has at most one way onward.
             while let Some(&(e, n)) = self.rwy_adj[r.end() as usize].iter().find(|(e, _)| Some(e) != r.edges.last()) {
                 r.edges.push(e);
                 r.nodes.push(n);
-                len += u64::from(self.len_dm[e as usize]);
             }
-            if best.as_ref().is_none_or(|(b, _)| len > *b) {
-                best = Some((len, r));
+            let (a, b) = (ap.nodes[r.nodes[0] as usize], ap.nodes[r.end() as usize]);
+            let bearing = f64::from(b.x - a.x).atan2(f64::from(b.y - a.y)).to_degrees().rem_euclid(360.0);
+            if let Some(d) = designator(&rwy.name, bearing) {
+                out.push((r, d));
             }
         }
-        let (_, run) = best?;
-        let (a, b) = (ap.nodes[run.nodes[0] as usize], ap.nodes[run.end() as usize]);
-        let bearing = f64::from(b.x - a.x).atan2(f64::from(b.y - a.y)).to_degrees().rem_euclid(360.0);
-        Some((run, designator(&rwy.name, bearing)?))
+        out
     }
 
     pub fn run_len_dm(&self, r: &Route) -> u64 {

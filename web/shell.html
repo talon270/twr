@@ -16,19 +16,44 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>twr</title>
+<script>
+  // R1.15: pick the theme before the first paint, so a saved-light page
+  // never flashes dark. Saved choice first, else the system's. boot() later
+  // applies the same rule through the store, with migrations.
+  try {
+    const s = JSON.parse(localStorage.getItem("twr.v1") || "null");
+    const t = s && s.settings && s.settings.theme;
+    document.documentElement.dataset.theme = t === "light" || t === "dark" ? t
+      : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  } catch (e) { /* unreadable store: boot() reports it; keep the markup default */ }
+</script>
 <style>
   /* Nothing OS Classic. Sourcing is weak (tagged `blog` in designs.md):
      black, white and one red, red reserved for conflicts and incidents. */
   /* --red draws shapes (3:1 is enough); --red-text is red words, which need
      4.5:1. #d71921 is 3.79:1 on the dark panel, so dark text red is
      #ff4d55 (6.04:1); light keeps #d71921 (4.72:1 on its panel). */
+  /* PLAN-ui-console step 3: --hair is the DOM hairline, lifted from mockup
+     A (#b8b8bc / #3e3e44, about 2:1 in both themes; the old dark #2a2a2c was
+     1.47:1 and vanished on black). --line stays as it was because the
+     canvas paints runways with it. Separators, not text, so 3:1 does not
+     apply. Fonts are named: on this machine the generic sans-serif resolves
+     to JetBrains Mono, and Arial to Liberation Sans. */
+  :root { --sans: "Liberation Sans", Arial, "Helvetica Neue", Helvetica, sans-serif;
+          --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
+          --hair: #b8b8bc; }
+  :root[data-theme="dark"] { --hair: #3e3e44; }
   :root { --fg: #000; --bg: #fff; --dim: #585a5a; --line: #c4c6c8; --red: #d71921; --red-text: #d71921; --panel: #f4f4f5;
+          --apron: #dddde0; --term: #bfc0c5;
           --elev: #fff; --elev-dim: #585a5a; --scrim: rgb(0 0 0 / .45); }
   /* --elev: the result dialog's surface. On a black page a black scrim
      changes nothing, so dark mode lifts the surface instead (handbook,
      figure-ground): #57575b is 2.9:1 against black, white text on it 7.2:1,
      and its dim text #d0d0d4 4.7:1. */
+  /* --apron, --term (B10): map fills under the network. Apron 1.36:1 light,
+     1.34:1 dark against --bg; --dim taxi lines keep at least 3.19:1 on both. */
   :root[data-theme="dark"] { --fg: #fff; --bg: #000; --dim: #8a8a8e; --line: #2a2a2c; --red: #d71921; --red-text: #ff4d55; --panel: #0b0b0c;
+          --apron: #232327; --term: #3c3c41;
           --elev: #57575b; --elev-dim: #d0d0d4; --scrim: rgb(0 0 0 / .6); }
 
   * { box-sizing: border-box; }
@@ -36,11 +61,11 @@
   /* A flex column, not a three-row grid: the banner is display:none when
      there is no problem, and a hidden grid item frees its row, which moved
      main into an auto-height row and stranded the bottom of the window. */
-  body { font: 13px/1.4 ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
+  body { font: 13px/1.4 var(--sans);
          display: flex; flex-direction: column; overflow: hidden; }
 
   .bar { display: flex; align-items: center; gap: 24px; padding: 8px 16px;
-         border-bottom: 1px solid var(--line); }
+         border-bottom: 1px solid var(--hair); }
   .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
   .bar .val { font-variant-numeric: tabular-nums; }
   .bar .grow { flex: 1; }
@@ -50,81 +75,256 @@
   .bar > span, .bar label { white-space: nowrap; }
   .brand { font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 
+  /* R1.25, handbook § Motion: the press spring (k 4000, zeta 1, no
+     overshoot), printed by springEasing() in design-catalogue/animations.html.
+     A transition, not keyframes, so a release mid-press turns back from
+     where it is. Settles in 118 ms: still "click, not swoosh". */
+  :root { --spring-press: linear(0, 0.08, 0.24, 0.408, 0.556, 0.676, 0.769, 0.837, 0.887, 0.922, 0.947, 0.964, 0.976, 0.984, 0.989, 0.993, 1);
+          --spring-press-ms: 118ms; }
+  /* PLAN-ui-console step 4: the state spring (k 1200, zeta 1, mass 1, no
+     overshoot), animations.html's "routine" curve, sampled to linear() and
+     copied from mockup A. Settles in 215 ms. For reversible state: the
+     selection inversion, a toggle, a bay fold. Conflicts, requests and
+     numbers still change at once (DESIGN.md motion contract). */
+  :root { --spring-state: linear(0, .011, .039, .08, .129, .183, .239, .296, .352, .407, .459, .509, .555, .599, .639, .675, .709, .74, .768, .793, .816, .836, .855, .871, .886, .899, .911, .921, .931, .939, .946, .953, .958, .963, .968, .972, .975, .978, .981, .983, .985, .987, .989, .99, .992, .993, .994, .994, 1);
+          --spring-state-ms: 215ms; }
   button { font: inherit; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
-           height: 28px; padding: 0 12px; border: 1px solid var(--fg); border-radius: 6px;
+           height: 44px; padding: 0 12px; border: 1px solid var(--fg); border-radius: 6px;
            background: var(--bg); color: var(--fg); cursor: pointer; }
-  /* Look rule: press inverts fill and text. "Click, not swoosh": 100 ms linear. */
+  /* Look rule: press inverts fill and text. */
   button:active { background: var(--fg); color: var(--bg); }
-  button { transition: background-color 100ms linear, color 100ms linear; }
+  button { transition: background-color var(--spring-press-ms) var(--spring-press), color var(--spring-press-ms) var(--spring-press); }
   @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+  /* PLAN-ui-console A3: every control is drawn 44 px tall, so the 28 px
+     drawing with a 44 px ::after hit area that Start and theme had is gone. */
+  /* Continuous corners (ui-tips § Continuous corners): a squircle reads
+     tighter at the same radius, so it gets about 1.3x (29 round : 38 there). */
+  @supports (corner-shape: squircle) {
+    button, select, input.seed { corner-shape: squircle; border-radius: 8px; }
+    .baybox, dialog.result, dialog.title { corner-shape: squircle; border-radius: 10px; }
+  }
 
   /* Persistent until the cause is gone; a failure the user cannot see is the
-     worst kind (memory.md § Product judgement). */
-  .banner { display: none; padding: 8px 16px; border-bottom: 1px solid var(--red);
-            color: var(--fg); background: color-mix(in srgb, var(--red) 18%, var(--bg)); }
+     worst kind (memory.md § Product judgement). Ink, not red: red means a
+     conflict and nothing else (PLAN-ui-console A4). A 3 px rule and bold
+     heading keep it loud without borrowing the conflict colour. */
+  .banner { display: none; padding: 8px 16px; border-bottom: 3px solid var(--fg);
+            color: var(--fg); background: var(--panel); }
   .banner.on { display: block; }
-  .banner b { color: var(--red); }
+  .banner b { color: var(--fg); }
 
   /* minmax(0, 1fr) rows: an auto row grows to the canvas's own pixel
      height, which `fit` sets from the row, so every window resize looped
      through the ResizeObserver and raised the error banner (pre-existing
      since B4 at least; found by verify_b6). */
-  main { flex: 1; display: grid; grid-template-columns: 1fr 320px; grid-template-rows: minmax(0, 1fr); min-height: 0; }
+  /* PLAN-ui-console step 2 (Tower console): the map takes two thirds, the
+     strip rack 34%. minmax(0, …) so a long strip never widens its column. */
+  /* Step 2, second part: the selected aircraft and the live conflicts sit
+     in a fixed-height row under the map (DESIGN.md A: "stay below the map
+     instead of expanding a strip"). Fixed, not auto: an auto row would
+     resize the canvas every time a hint or a verb row changed length. */
+  :root { --ctx-h: 184px; }
+  main { flex: 1; display: grid; grid-template-columns: minmax(0, 66fr) minmax(0, 34fr);
+         grid-template-rows: minmax(0, 1fr) var(--ctx-h); min-height: 0; }
+  #map { grid-column: 1; grid-row: 1; }
+  .strips { grid-column: 2; grid-row: 1 / 3; }
+  #ctx { grid-column: 1; grid-row: 2; display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+         border-top: 1px solid var(--hair); background: var(--panel); min-height: 0; }
+  #ctx > section { padding: 10px 16px; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+  #conflicts { border-left: 1px solid var(--hair); }
+  #sel .head { display: flex; align-items: baseline; gap: 12px; }
+  #sel-cs { font-weight: 700; font-size: 16px; }
+  #sel-wake, #sel-tel { color: var(--dim); font-size: 12px; }
+  #sel-hint { color: var(--dim); font-size: 12px; }
+  #sel-ask { font-weight: 700; }
+  #sel-ask:empty, #sel-via:empty, #sel-note:empty, #sel-notice:empty, #sel-hint:empty { display: none; }
+  #sel-note { font-variant-numeric: tabular-nums; }
+  /* A live pair outlines its panel in red; red still means a conflict and
+     nothing else. No pair: plain ink saying so. */
+  #conflicts.on { box-shadow: inset 3px 0 var(--red); }
+  #conflict-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  #conflict-list button { width: 100%; text-align: left; text-transform: none; letter-spacing: 0; font-size: 13px;
+                          color: var(--red-text); border-color: var(--red); font-variant-numeric: tabular-nums; }
+  #conflict-none { color: var(--dim); font-size: 12px; }
   /* touch-action none: the canvas owns drag and wheel, the page never scrolls. */
   #map { width: 100%; height: 100%; display: block; min-width: 0; touch-action: none; cursor: crosshair; }
   #map.dragging { cursor: grabbing; }
-  .strips { border-left: 1px solid var(--line); background: var(--panel);
+  .strips { border-left: 1px solid var(--hair); background: var(--panel);
             overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-  .strip { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  /* Step 3: the bay is the group (one hairline box, lines make groups);
+     strips are rows in it, split by a hairline. */
+  .strip { border-top: 1px solid var(--hair); padding: 10px 12px;
            display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; background: var(--bg); }
   .strip .cs { font-weight: 700; font-size: 14px; }
   .strip .num { font-variant-numeric: tabular-nums; text-align: right; }
-  .strip .state, .strip .hint { grid-column: 1 / -1; }
-  .strip .hint { color: var(--dim); font-size: 11px; }
-  .strip.sel { border-color: var(--fg); }
-  /* A refused verb: plain text in the strip, not red (red is for conflicts). */
-  .strip .notice { grid-column: 1 / -1; font-size: 11px; }
-  .strip .notice:empty { display: none; }
+  .strip .state { grid-column: 1 / -1; }
+  /* Selection is inversion (Classic look rule), the same move as a pressed
+     button. Red stays as the inset bar on an alarm strip. */
+  .strip.sel { background: var(--fg); color: var(--bg); }
+  /* Step 4: selecting or leaving a strip springs its inversion. */
+  .strip, .strip .alert { transition: background-color var(--spring-state-ms) var(--spring-state), color var(--spring-state-ms) var(--spring-state); }
+  .strip.sel .alert { color: var(--bg); font-weight: 700; }
+  .strip.sel.req::before { display: none; }
+  /* A refused verb (#sel-notice): plain ink, not red (red is for conflicts). */
   /* Red only for a live conflict or a recent incident. No animation: the
      bar appears on the tick the state starts and goes when it ends. */
-  .strip.alarm { border-left: 3px solid var(--red); }
+  /* The red bar is its own layer above the request tint (::before): an inset
+     shadow sat under the tint and vanished on a requesting strip. */
+  .strip { position: relative; }
+  .strip.alarm::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--red); }
   .strip .alert { grid-column: 1 / -1; color: var(--red-text); font-variant-numeric: tabular-nums; }
-  .strip .alert:empty, .strip .note:empty, .strip .hint:empty { display: none; }
+  .strip .alert:empty, .strip .note:empty { display: none; }
   .strip .note { grid-column: 1 / -1; font-variant-numeric: tabular-nums; }
   .log { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px;
-         font-size: 11px; font-variant-numeric: tabular-nums; }
+         font-size: 12px; font-variant-numeric: tabular-nums; }
   .log li { color: var(--red-text); }
   /* Go-arounds are not incidents: plain ink, whatever caused them. */
   .log.plain li { color: var(--fg); }
-  #bay { display: flex; flex-direction: column; gap: 8px; }
+  /* Step 2: the four bays in a 2×2 grid, Pushback | Ground over
+     Runway | Landings. Each bay scrolls inside 40vh, so ten strips in
+     Pushback cannot push Landings off the screen at Peak. */
+  #bay { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: start; }
+  .baybox { display: flex; flex-direction: column; min-width: 0; max-height: 40vh; overflow-y: auto;
+            border: 1px solid var(--hair); border-radius: 8px; background: var(--bg); }
   .strip { cursor: pointer; }
   main { position: relative; }
-  .attr { position: absolute; left: 12px; bottom: 8px; font-size: 11px; color: var(--dim); pointer-events: none; }
-  .saved { color: var(--dim); font-size: 11px; letter-spacing: .08em; visibility: hidden; }
+  .attr { position: absolute; left: 12px; bottom: calc(var(--ctx-h) + 8px); font-size: 12px; color: var(--dim); pointer-events: none; }
+  .saved { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; visibility: hidden; }
   .saved.on { visibility: visible; }
-  /* Shift picker: same 28 px, 1 px ink, 6 px corner as the buttons. */
-  select, input.seed { font: inherit; font-size: 11px; height: 28px; padding: 0 8px; border: 1px solid var(--fg);
+  /* Shift picker: same 44 px, 1 px ink, 6 px corner as the buttons. */
+  select, input.seed { font: inherit; font-size: 11px; height: 44px; padding: 0 8px; border: 1px solid var(--fg);
                        border-radius: 6px; background: var(--bg); color: var(--fg); }
   input.seed { width: 11ch; font-variant-numeric: tabular-nums; }
   .shift { display: flex; align-items: center; gap: 8px; }
-  .strip.gone { display: none; }
+  /* Step 2: an empty bay keeps its header and its 0, so the 2×2 never
+     shows an unlabeled hole. */
+  .strip.gone, .strip.folded { display: none; }
+  /* C1: four bays in one flex column. Headers and strips are siblings and
+     `order` places them, so a strip changing bay moves no DOM node (a node
+     moved between pointerdown and click would swallow the click). */
+  .bayhead { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 44px;
+             padding: 0 4px; margin: 0; border: 0; background: none; color: var(--dim); font: inherit; font-size: 11px;
+             letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+  .bayhead:hover, .bayhead:focus-visible { color: var(--fg); }
+  .bayhead .n { font-variant-numeric: tabular-nums; }
+  .bayhead[aria-expanded="false"] .chev { transform: rotate(-90deg); }
+  .bayhead .chev { display: inline-block; margin-right: 6px; transition: transform var(--spring-state-ms) var(--spring-state); }
+  @media (prefers-reduced-motion: reduce) { .bayhead .chev { transition: none; } }
+  /* A request (push, taxi, takeoff, landing clearance): the card carries a
+     static 12% ink tint and an ink border. Not red: red is for conflicts.
+     12% keeps the dim hint text at 4.7:1 or better in both themes. The
+     words in .ask carry the meaning; the tint only points to them. */
+  .strip .ask { grid-column: 1 / -1; font-weight: 700; }
+  .strip .ask:empty { display: none; }
+  .strip.req { position: relative; isolation: isolate; }
+  /* PLAN-ui-console A5 (approved 2026-11-10): no looping pulse. The tint is
+     static in every motion mode; the .ask words carry the request. */
+  .strip.req::before { content: ""; position: absolute; inset: 0; z-index: -1;
+                       background: color-mix(in srgb, var(--fg) 12%, var(--bg)); }
+  /* Verb buttons of the selected aircraft, in the panel under the map. */
+  .verbs { display: flex; flex-wrap: wrap; gap: 6px 8px; margin: 4px 0; }
+  .verbs:empty { display: none; }
+  .verbs .k { color: var(--dim); margin-right: 6px; }
+  .verbs button:active .k { color: inherit; }
 
   /* B7 score: four numbers side by side, never blended; plain ink, red only
      for incidents above zero. */
   .score { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: baseline;
-           padding-bottom: 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
-  .score[hidden] { display: none; }
+           padding-bottom: 10px; border-bottom: 1px solid var(--hair); font-variant-numeric: tabular-nums; }
+  .score[hidden], #wind-box [hidden] { display: none; }
+  /* Step 2: the score is a second header row, not a rack panel. Each
+     measure is its own label-and-value pair; none is ever summed. */
+  #score { display: flex; flex-wrap: wrap; gap: 4px 24px; padding: 6px 16px; border-bottom: 1px solid var(--hair); }
+  #score[hidden] { display: none; }
+  #score > span { white-space: nowrap; }
+  /* C4: runway toggles. Pressed is solid ink, so state never rests on colour. */
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button { min-width: 44px; min-height: 44px; padding: 0 8px; font: inherit; font-size: 11px; cursor: pointer;
+                border: 1px solid var(--fg); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  .seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+  /* A runway toggle is reversible state: the state spring, not the press. */
+  .seg button { transition: background-color var(--spring-state-ms) var(--spring-state), color var(--spring-state-ms) var(--spring-state); }
+  .rwnote { grid-column: 1 / -1; font-size: 12px; color: var(--dim); }
+  .rwnote:empty { display: none; }
   .score .bad { color: var(--red-text); }
   dialog.result { border: 1px solid var(--fg); border-radius: 8px; background: var(--elev); color: var(--fg);
-                  padding: 20px 24px; min-width: 460px; font: inherit; }
+                  padding: 20px 24px; width: min(460px, 100vw - 32px); font: inherit; }
   dialog.result::backdrop { background: var(--scrim); }
+  /* Step 4: the review rises 8 px on the state spring. Transitions, not
+     keyframes, so Esc or a button during the entrance turns it back from
+     where it is; allow-discrete keeps it in the top layer while it leaves. */
+  dialog.result { opacity: 0; transform: translateY(8px);
+                  transition: opacity var(--spring-state-ms) var(--spring-state), transform var(--spring-state-ms) var(--spring-state),
+                              overlay var(--spring-state-ms) allow-discrete, display var(--spring-state-ms) allow-discrete; }
+  dialog.result[open] { opacity: 1; transform: none; }
+  @starting-style { dialog.result[open] { opacity: 0; transform: translateY(8px); } }
+  dialog.result::backdrop { opacity: 0; transition: opacity var(--spring-state-ms) var(--spring-state),
+                            overlay var(--spring-state-ms) allow-discrete, display var(--spring-state-ms) allow-discrete; }
+  dialog.result[open]::backdrop { opacity: 1; }
+  @starting-style { dialog.result[open]::backdrop { opacity: 0; } }
   dialog.result h2 { margin: 0 0 4px; font-size: 16px; letter-spacing: .08em; text-transform: uppercase; text-wrap: balance; }
-  dialog.result .sub { margin: 0 0 16px; color: var(--elev-dim); font-size: 11px; }
+  dialog.result .sub { margin: 0 0 16px; color: var(--elev-dim); font-size: 12px; }
   dialog.result table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
   dialog.result th { text-align: left; font-weight: 400; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--elev-dim); padding: 0 12px 6px 0; }
   dialog.result td { padding: 4px 12px 4px 0; vertical-align: top; }
   dialog.result .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
   dialog.result button { background: var(--elev); }
+
+  /* F2 title screen. A native <dialog> on the scrim, same surface tokens as
+     the result dialog. Enter and exit are one transition on opacity and a
+     small rise, driven by the press spring: a close mid-open turns back from
+     where it is. Reduced motion: opacity only, no rise. */
+  dialog.title { border: 1px solid var(--fg); border-radius: 8px; background: var(--elev); color: var(--fg);
+                 padding: 24px 28px; width: min(480px, 100vw - 32px); font: inherit;
+                 opacity: 0; transform: translateY(12px);
+                 transition: opacity 200ms var(--spring-press), transform 200ms var(--spring-press),
+                             overlay 200ms allow-discrete, display 200ms allow-discrete; }
+  dialog.title[open] { opacity: 1; transform: none; }
+  @starting-style { dialog.title[open] { opacity: 0; transform: translateY(12px); } }
+  dialog.title::backdrop { background: var(--scrim); opacity: 0; transition: opacity 200ms var(--spring-press), overlay 200ms allow-discrete, display 200ms allow-discrete; }
+  dialog.title[open]::backdrop { opacity: 1; }
+  @starting-style { dialog.title[open]::backdrop { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    dialog.title { transform: none; }
+    @starting-style { dialog.title[open] { transform: none; } }
+    dialog.title { transition: opacity 120ms linear, overlay 120ms allow-discrete, display 120ms allow-discrete; }
+  }
+  dialog.title h1 { margin: 0 0 2px; font-size: 40px; letter-spacing: .12em; text-transform: lowercase; line-height: 1.1; }
+  dialog.title .sub { margin: 0 0 16px; color: var(--elev-dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  dialog.title dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; margin: 0 0 14px; font-variant-numeric: tabular-nums; }
+  dialog.title dt { color: var(--elev-dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  dialog.title dd { margin: 0; }
+  dialog.title .legal { margin: 0 0 4px; }
+  dialog.title .nav { margin: 0; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+  dialog.title .actions { display: flex; justify-content: flex-end; margin-top: 18px; }
+  /* 44 px target, drawn as a full-height button; the dialog has no neighbour. */
+  dialog.title button { background: var(--elev); height: 44px; min-width: 120px; }
+  /* PLAN-ui-console A2: the radio line. Full width under the map and
+     strips. Words come from App.complete (Rust); the page keeps no verb
+     list. A refusal is plain ink: red is for conflicts. */
+  .radio { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--hair);
+           background: var(--panel); flex-wrap: wrap; }
+  .radio input { flex: 1 1 320px; min-width: 0; height: 44px; padding: 0 10px; font: inherit; font-size: 14px;
+                 border: 1px solid var(--fg); border-radius: 6px; background: var(--bg); color: var(--fg);
+                 text-transform: uppercase; }
+  .radio .next { display: flex; flex-wrap: wrap; gap: 6px; flex: 2 1 320px; min-height: 44px; align-items: center; }
+  .radio .next button { min-width: 44px; }
+  .radio input::placeholder { text-transform: none; color: var(--dim); }
+  .radio .said { flex: 1 1 100%; font-size: 12px; min-height: 1em; }
+  .radio .said:empty { display: none; }
+  /* Step 3 (Classic): mono for callsigns, numbers, labels, keys and every
+     control; sans for the prose in between (states, hints, notes).
+     Last in the sheet: button, select, input and .bayhead set `font: inherit`
+     above, which would otherwise win. */
+  .label, .val, .brand, button, select, input, .strip .cs, .strip .num, #sel-cs, #sel-wake, #sel-tel,
+  .log, .verbs .k, .bayhead, .saved, .attr, .radio input, dialog h1, dialog h2, dialog th { font-family: var(--mono); }
+  /* Step 4 under reduced motion: every state change snaps.
+     Last in the sheet, so it beats every rule that sets a transition. */
+  @media (prefers-reduced-motion: reduce) {
+    .strip, .strip .alert, .seg button, dialog.result, dialog.result::backdrop { transition: none; }
+    dialog.result, dialog.result[open] { transform: none; }
+    @starting-style { dialog.result[open] { opacity: 1; transform: none; } dialog.result[open]::backdrop { opacity: 1; } }
+  }
 </style>
 </head>
 <body>
@@ -154,38 +354,85 @@
     <span class="saved" id="saved">[SAVED]</span>
     <button id="theme" type="button">Light</button>
   </header>
+  <section class="score" id="score" aria-label="Score" hidden>
+    <span><span class="label">Movements</span>
+      <span class="val" id="sc-mov">0</span> of <span class="val" id="sc-off">0</span> offered</span>
+    <span title="Game minutes aircraft waited on a clearance you could have given. Waits for wake, a busy runway, or a pilot's go-around do not count; a go-around's 8 km back in is left out.">
+      <span class="label">Delay you caused</span>
+      <span class="val" id="sc-delay">0.0</span> min · <span class="val" id="sc-delayed">0</span> aircraft over 1 min</span>
+    <span><span class="label">Incidents</span> <span class="val" id="sc-inc">0</span></span>
+    <span><span class="label">Challenges</span> <span class="val" id="sc-ch">0</span></span>
+  </section>
   <div class="banner" id="banner" role="alert"></div>
   <main>
     <canvas id="map"></canvas>
     <!-- On the map, where map attributions sit: in the status bar it was
          squeezed to an 8-line column once B6 added the shift controls. -->
     <span class="attr" id="attr">© OpenStreetMap contributors · not for real-world navigation</span>
+    <!-- Step 2: what the selected strip used to grow (verbs, via, hint,
+         notice) lives here, so a strip never changes height under the
+         pointer. One copy, for the selected aircraft only. -->
+    <div id="ctx">
+      <section id="sel" aria-label="Selected aircraft">
+        <div class="head"><span id="sel-cs">-</span><span id="sel-wake"></span><span id="sel-tel"></span></div>
+        <span id="sel-state"></span>
+        <span id="sel-ask"></span>
+        <span id="sel-note"></span>
+        <span id="sel-via"></span>
+        <div class="verbs" id="sel-verbs"></div>
+        <span id="sel-hint">-</span>
+        <span id="sel-notice" role="status"></span>
+      </section>
+      <section id="conflicts" aria-label="Live conflicts">
+        <span class="label">Conflicts <span class="val" id="conflict-count">0</span></span>
+        <ol id="conflict-list"></ol>
+        <span id="conflict-none">No live conflict</span>
+      </section>
+    </div>
     <aside class="strips" id="strips" aria-label="Flight strips">
       <!-- B9: one wind per shift. Here, not in the status bar: at 1500 px
            the bar had no room left (it overflowed 107 px). -->
       <section class="score" id="wind-box" aria-label="Wind">
         <span class="label">Wind</span>
-        <span><span class="val" id="wind">-</span> · <span class="val" id="flow">-</span> flow</span>
-        <span class="label">Runways</span><span class="val" id="rwys">-</span>
+        <span><span class="val" id="wind">-</span> · <span class="val" id="flow">-</span> flow<span class="val" id="lvp-tag" hidden> · LVP</span></span>
+        <!-- PLAN-lvp.md: a scored shift takes fog from its seed, so one seed
+             is one weather for everyone; Practice takes it from this toggle. -->
+        <span class="label" id="lvp-l">Fog</span>
+        <span class="seg" id="lvp-seg" role="group" aria-label="Low-visibility procedures"><button type="button" id="lvp-btn" aria-pressed="false">LVP</button></span>
+        <!-- C4: the runway picker. Practice has no traffic to plan for, so its
+             rows are hidden and the note names the fixed runways. -->
+        <span class="label" id="rw-dir-l">Direction</span>
+        <span class="seg" id="rw-dir" role="group" aria-label="Runway direction">
+          <button type="button" data-flow="west" aria-pressed="false">West</button><button type="button" data-flow="east" aria-pressed="false">East</button>
+        </span>
+        <span class="label" id="rw-land-l">Land</span><span class="seg" id="rw-land" role="group" aria-label="Landing runways"></span>
+        <span class="label" id="rw-dep-l">Depart</span><span class="seg" id="rw-dep" role="group" aria-label="Departure runways"></span>
+        <span class="rwnote" id="rw-note" role="status"></span>
       </section>
-      <section class="score" id="score" aria-label="Score" hidden>
-        <span class="label">Movements</span>
-        <span><span class="val" id="sc-mov">0</span> of <span class="val" id="sc-off">0</span> offered</span>
-        <span class="label">Delay you caused</span>
-        <span title="Game minutes aircraft waited on a clearance you could have given. Waits for wake, a busy runway, or a pilot's go-around do not count; a go-around's 8 km back in is left out.">
-          <span class="val" id="sc-delay">0.0</span> min · <span class="val" id="sc-delayed">0</span> aircraft over 1 min</span>
-        <span class="label">Incidents</span><span class="val" id="sc-inc">0</span>
-        <span class="label">Challenges</span><span class="val" id="sc-ch">0</span>
-      </section>
-      <div class="label">Strips</div>
       <!-- One strip per aircraft, built from this template, in order of
            appearance. -->
-      <div id="bay"></div>
+      <div id="bay">
+        <section class="baybox" data-bay="0"><button type="button" class="bayhead empty" data-bay="0" aria-expanded="true"><span><span class="chev" aria-hidden="true">▾</span>Pushback</span><span class="n">0</span></button></section>
+        <section class="baybox" data-bay="1"><button type="button" class="bayhead empty" data-bay="1" aria-expanded="true"><span><span class="chev" aria-hidden="true">▾</span>Ground</span><span class="n">0</span></button></section>
+        <section class="baybox" data-bay="2"><button type="button" class="bayhead empty" data-bay="2" aria-expanded="true"><span><span class="chev" aria-hidden="true">▾</span>Runway</span><span class="n">0</span></button></section>
+        <section class="baybox" data-bay="3"><button type="button" class="bayhead empty" data-bay="3" aria-expanded="true"><span><span class="chev" aria-hidden="true">▾</span>Landings</span><span class="n">0</span></button></section>
+      </div>
       <div class="label">Incidents <span class="val" id="inc-count">0</span></div>
       <ol class="log" id="incidents" aria-live="polite"></ol>
       <div class="label">Go-arounds <span class="val" id="ga-count">0</span> · challenges <span class="val" id="ga-challenges">0</span></div>
       <ol class="log plain" id="go-arounds"></ol>
     </aside>
+    <dialog class="title" id="title" aria-labelledby="title-h">
+      <h1 id="title-h">twr</h1>
+      <p class="sub">Delhi IGI · VIDP · tower</p>
+      <dl>
+        <dt>Charts</dt><dd>eAIP AIRAC <span id="t-airac"></span></dd>
+        <dt>Map data</dt><dd>OSM extract <span id="t-osm">-</span></dd>
+      </dl>
+      <p class="legal">© OpenStreetMap contributors</p>
+      <p class="nav">Not for real-world navigation</p>
+      <form method="dialog" class="actions"><button value="go" autofocus>Start</button></form>
+    </dialog>
     <dialog class="result" id="result" aria-labelledby="res-title">
       <h2 id="res-title">Shift over</h2>
       <p class="sub" id="res-sub"></p>
@@ -202,14 +449,20 @@
       <div class="strip">
         <span class="cs" data-k="cs">-</span><span class="num" data-k="wake"></span>
         <span class="state" data-k="state">-</span>
+        <span class="ask" data-k="ask"></span>
         <span class="alert" data-k="alert"></span>
         <span class="note" data-k="note"></span>
-        <span class="state" data-k="via"></span>
-        <span class="hint" data-k="hint">-</span>
-        <span class="notice" data-k="notice" role="status"></span>
       </div>
     </template>
   </main>
+  <form class="radio" id="radio" autocomplete="off">
+    <label class="label" for="radio-in">Radio</label>
+    <input id="radio-in" spellcheck="false" placeholder="callsign, then instruction · Tab, Enter, Esc"
+           aria-describedby="radio-said" aria-controls="radio-next">
+    <span class="next" id="radio-next" aria-label="Legal next words"></span>
+    <button id="radio-send" type="submit">Send</button>
+    <span class="said" id="radio-said" role="status"></span>
+  </form>
 
 <script>
 "use strict";
@@ -219,7 +472,9 @@ window.TWR = (() => {
   // namespaced key is what keeps twr from colliding with other local tools.
   const STORE_KEY = "twr.v1";
   const SCHEMA_VERSION = 2;
-  const DEFAULTS = () => ({ v: SCHEMA_VERSION, settings: { theme: "dark" }, bests: {} });
+  // No saved theme follows the system, as the <head> script did (R1.15).
+  const systemTheme = () => matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  const DEFAULTS = () => ({ v: SCHEMA_VERSION, settings: { theme: systemTheme() }, bests: {} });
 
   // Each entry upgrades from version n to n + 1, and leaves everything it
   // does not know about untouched.
@@ -295,7 +550,7 @@ window.TWR = (() => {
   const colours = {};
   function readColours() {
     const cs = getComputedStyle(document.documentElement);
-    for (const k of ["bg", "fg", "dim", "red", "line"]) colours[k] = cs.getPropertyValue("--" + k).trim();
+    for (const k of ["bg", "fg", "dim", "red", "line", "apron", "term"]) colours[k] = cs.getPropertyValue("--" + k).trim();
   }
 
   // ---- Canvas sizing -----------------------------------------------------
@@ -306,6 +561,10 @@ window.TWR = (() => {
     const r = canvas.getBoundingClientRect();
     canvas.width = Math.max(1, Math.round(r.width * dpr));
     canvas.height = Math.max(1, Math.round(r.height * dpr));
+    // R1.16: setting the size clears the canvas, and ResizeObserver runs
+    // after this frame's draw. Draw again now, with no time passing, or the
+    // frame paints blank.
+    if (app) draw(0);
   }
   new ResizeObserver(fit).observe(canvas);
 
@@ -319,7 +578,10 @@ window.TWR = (() => {
   function wireInput() {
     const local = e => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
     let press = null;
+    // R1.8: the first pointer down owns the gesture. A second finger is
+    // ignored, and its moves and release are skipped by id.
     canvas.addEventListener("pointerdown", e => {
+      if (press) return;
       const [x, y] = local(e);
       press = { x, y, lx: x, ly: y, button: e.button, drag: false, id: e.pointerId };
       canvas.setPointerCapture(e.pointerId);
@@ -327,6 +589,7 @@ window.TWR = (() => {
     canvas.addEventListener("pointermove", e => {
       const [x, y] = local(e);
       if (!press) { app.hover(x, y); return; }
+      if (e.pointerId !== press.id) return;
       if (!press.drag && Math.hypot(x - press.x, y - press.y) > CLICK_SLOP_PX) {
         press.drag = true;
         canvas.classList.add("dragging");
@@ -335,7 +598,7 @@ window.TWR = (() => {
       press.lx = x; press.ly = y;
     });
     const release = e => {
-      if (!press) return;
+      if (!press || e.pointerId !== press.id) return;
       const [x, y] = local(e);
       if (!press.drag && e.type === "pointerup") app.click(x, y, press.button);
       canvas.classList.remove("dragging");
@@ -353,7 +616,7 @@ window.TWR = (() => {
     window.addEventListener("keydown", e => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       // The result dialog owns the keyboard while it is open.
-      if (el("result").open) return;
+      if (el("result").open || el("title").open) return;
       // Typing a seed or picking a mode is not a radio call.
       if (e.target.closest && e.target.closest("input, select")) return;
       if (e.key === " ") {
@@ -371,62 +634,195 @@ window.TWR = (() => {
     // Click a strip: select its aircraft, as clicking it on the map does.
     // The only way to reach one still 8 km out on final at the fitted zoom.
     bay().addEventListener("click", e => {
+      // A bay header folds its bay; anything else on a strip selects it.
+      const h = e.target.closest(".bayhead");
+      if (h) {
+        const b = Number(h.dataset.bay);
+        foldedBays.has(b) ? foldedBays.delete(b) : foldedBays.add(b);
+        shownRev = -1;
+        return;
+      }
       const s = e.target.closest(".strip");
       if (s) app.select(Number(s.id.slice(5)));
     });
     bay().addEventListener("pointerdown", e => e.preventDefault());
+    // The panel under the map: a verb button presses the key it shows, a
+    // conflict row selects the first aircraft of its pair. A mouse press
+    // takes no focus, so the next Enter still sends the clearance.
+    const ctx = el("ctx");
+    ctx.addEventListener("pointerdown", e => { if (e.target.closest("button")) e.preventDefault(); });
+    ctx.addEventListener("click", e => {
+      const v = e.target.closest("button[data-key]");
+      if (v) { app.key(v.dataset.key); return; }
+      const c = e.target.closest("button[data-i]");
+      if (c) app.select(Number(c.dataset.i));
+    });
+    // C4: the runway picker. A mouse press must not take focus, or the next
+    // Enter (send the clearance) would press the toggle instead.
+    const rw = el("wind-box");
+    rw.addEventListener("pointerdown", e => { if (e.target.closest("button")) e.preventDefault(); });
+    rw.addEventListener("click", e => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      if (b.id === "lvp-btn") { app.set_lvp(!app.lvp()); drawLvp(); }
+      else if (b.dataset.flow) rwErr = app.runway_direction(b.dataset.flow);
+      else if (b.dataset.end) rwErr = app.runway_set(b.dataset.end, b.dataset.role === "land", b.getAttribute("aria-pressed") !== "true");
+      shownRw = ""; shownRev = -1;
+    });
   }
 
   // ---- Boot --------------------------------------------------------------
   const el = id => document.getElementById(id);
+  // PLAN-ui-console A2: the radio line. Every word offered comes from
+  // App.complete, and a sent line goes through App.send_line, which presses
+  // the same verb key a strip button does.
+  function radioNext() {
+    if (!app) return;
+    const v = el("radio-in").value, words = app.complete(v), box = el("radio-next");
+    const key = words.join("|");
+    if (box.dataset.v === key) return;
+    box.dataset.v = key;
+    box.replaceChildren(...words.map(w => {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = w; b.dataset.word = w;
+      return b;
+    }));
+  }
+  function radioTake(word) {
+    const inp = el("radio-in");
+    const parts = inp.value.replace(/\S*$/, "");
+    inp.value = parts + word + " ";
+    radioNext();
+  }
+  function wireRadio() {
+    const inp = el("radio-in");
+    inp.addEventListener("input", radioNext);
+    inp.addEventListener("focus", radioNext);
+    inp.addEventListener("keydown", e => {
+      if (e.key === "Tab" && !e.shiftKey) {
+        const first = el("radio-next").querySelector("button");
+        if (first) { radioTake(first.dataset.word); e.preventDefault(); }
+      } else if (e.key === "Escape") {
+        inp.value = ""; el("radio-said").textContent = ""; radioNext(); inp.blur(); e.preventDefault();
+      }
+    });
+    el("radio-next").addEventListener("pointerdown", e => e.preventDefault());
+    el("radio-next").addEventListener("click", e => {
+      const b = e.target.closest("button[data-word]");
+      if (b) { radioTake(b.dataset.word); inp.focus(); }
+    });
+    el("radio").addEventListener("submit", e => {
+      e.preventDefault();
+      if (!app) return;
+      const why = app.send_line(inp.value);
+      el("radio-said").textContent = why;
+      if (!why) inp.value = "";
+      radioNext();
+    });
+  }
   // Writes only on change: the strip is read every frame, the DOM is not
   // touched unless something moved.
   const setText = (id, v) => { const n = el(id); v = String(v); if (n.textContent !== v) n.textContent = v; };
   const pad = n => String(n).padStart(2, "0");
   let app = null;
 
-  // Strip i's elements carry ids like state0, hint0: the B2/B3 scripts read
-  // strip 0 by those ids.
+  // Strip i's elements carry ids like state0, alert0: the verify scripts
+  // read a strip by those ids. Hint, verbs, via and notice are in #sel.
   const bay = () => el("bay");
   function ensureStrips(n) {
-    while (bay().children.length < n) {
-      const i = bay().children.length;
+    const strips = bay().getElementsByClassName("strip");
+    while (strips.length < n) {
+      const i = strips.length;
       const node = el("strip-tpl").content.firstElementChild.cloneNode(true);
       node.id = "strip" + i;
       for (const c of node.querySelectorAll("[data-k]")) c.id = c.dataset.k + i;
       bay().append(node);
     }
-    while (bay().children.length > n) bay().lastElementChild.remove();
+    // By id, not by position: step 2's bay boxes put strips out of index order.
+    while (strips.length > n) el("strip" + (strips.length - 1)).remove();
   }
-  let shownIncidents = "", shownGoArounds = "";
+  // Rebuilt only when the list changes: a button replaced under the pointer
+  // between pointerdown and click would swallow the click.
+  function setVerbs(list) {
+    const box = el("sel-verbs"), key = list.join("|");
+    if (box.dataset.v === key) return;
+    box.dataset.v = key;
+    box.replaceChildren(...list.map(row => {
+      const [k, label] = row.split("\t");
+      const b = document.createElement("button");
+      b.type = "button"; b.dataset.key = k; b.tabIndex = -1;
+      const kk = document.createElement("span");
+      kk.className = "k"; kk.textContent = k;
+      b.append(kk, label);
+      return b;
+    }));
+  }
+  let shownIncidents = "", shownGoArounds = "", shownRev = -1;
+  const foldedBays = new Set();
   function drawStrips() {
+    // R1.22: nothing ticked and no input since the last build: every strip
+    // and both lists already show the current state.
+    const rev = app.revision();
+    if (rev === shownRev) return;
+    shownRev = rev;
+    drawRunways();
     const n = app.count();
     ensureStrips(n);
     const sel = app.selected_callsign();
-    // In a shift, strips of aircraft that have left go; Practice keeps
-    // them, as B2-B5 did.
-    const shift = app.shift_mode() !== "practice";
+    // Strips of aircraft that have left go, in Practice too: a departed or
+    // shut-down strip is a card you can do nothing with.
+    const groups = [[], [], [], []];
+    let selI = -1;
+    const pairs = new Map();
     for (let i = 0; i < n; i++) {
-      const gone = shift && app.gone(i);
+      const gone = app.gone(i);
       el("strip" + i).classList.toggle("gone", gone);
-      if (gone) continue;
       const cs = app.callsign(i);
-      const mine = sel === cs || (sel === "" && i === 0);
+      if (sel === cs) selI = i;
+      if (gone) continue;
+      groups[app.bay_of(i)].push([app.bay_key(i), i]);
       setText("cs" + i, cs);
       setText("wake" + i, app.wake(i));
       setText("state" + i, app.strip_state(i));
-      const alert = app.conflict_text(i) || (app.incident_tag(i) ? "INCIDENT" : "");
+      const ask = app.request_text(i);
+      setText("ask" + i, ask);
+      el("strip" + i).classList.toggle("req", ask !== "");
+      const conflict = app.conflict_text(i);
+      const alert = conflict || (app.incident_tag(i) ? "INCIDENT" : "");
       setText("alert" + i, alert);
       el("strip" + i).classList.toggle("alarm", alert !== "");
+      // conflict_text is "CONFLICT <other> · <d> m"; one row per pair.
+      if (conflict) {
+        const rest = conflict.replace(/^CONFLICT /, ""), other = rest.split(" ")[0];
+        const k = [cs, other].sort().join("+");
+        if (!pairs.has(k)) pairs.set(k, [i, `${cs} + ${rest}`]);
+      }
       setText("note" + i, app.strip_note(i));
-      const via = mine ? app.via_names() : "";
-      setText("via" + i, via ? "Via " + via : "");
-      setText("hint" + i, mine ? app.hint() : "");
-      setText("notice" + i, mine ? app.notice() : "");
       el("strip" + i).classList.toggle("sel", sel === cs);
       const tel = app.telephony(i);
       if (el("strip" + i).title !== tel) el("strip" + i).title = tel;
     }
+    drawSelected(selI);
+    drawConflicts([...pairs.values()]);
+    // C1 + step 2: each strip sits in its bay's box, nearest need first by
+    // CSS order; a folded bay hides its strips but its header keeps the count.
+    // A strip moves to another box only when the sim changes its bay, the
+    // same moment C1's order-only layout moved it on screen; a reorder
+    // inside a bay is still CSS order alone.
+    groups.forEach((g, b) => {
+      g.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+      const box = bay().children[b];
+      g.forEach(([, i], rank) => {
+        const st = el("strip" + i), o = String(1 + rank);
+        if (st.parentNode !== box) box.append(st);
+        if (st.style.order !== o) st.style.order = o;
+        st.classList.toggle("folded", foldedBays.has(b));
+      });
+      const head = bay().querySelector(`.bayhead[data-bay="${b}"]`);
+      head.classList.toggle("empty", g.length === 0);
+      head.setAttribute("aria-expanded", String(!foldedBays.has(b)));
+      head.lastElementChild.textContent = g.length;
+    });
     // Keyed on the newest row too, not the count alone: a loaded scenario
     // can hold as many rows as the last world, all of them different.
     const gaRows = app.go_around_rows();
@@ -452,6 +848,46 @@ window.TWR = (() => {
         return li;
       }));
     }
+  }
+
+  // The selected aircraft, under the map. Nothing selected: the hint says
+  // how to select, and every other field is empty.
+  function drawSelected(i) {
+    const on = i >= 0;
+    el("sel").dataset.i = String(i);
+    setText("sel-cs", on ? app.callsign(i) : "-");
+    setText("sel-wake", on ? app.wake(i) : "");
+    setText("sel-tel", on ? app.telephony(i).split(" · ")[0] : "");
+    setText("sel-state", on ? app.strip_state(i) : "");
+    setText("sel-ask", on ? app.request_text(i) : "");
+    setText("sel-note", on ? app.strip_note(i) : "");
+    const via = on ? app.via_names() : "";
+    setText("sel-via", via ? "Via " + via : "");
+    setVerbs(on ? app.verb_buttons(i) : []);
+    setText("sel-hint", app.hint());
+    setText("sel-notice", app.notice());
+  }
+  // Rebuilt only when the set of pairs changes; the distance, which moves
+  // every tick, is written into the existing button. Rebuilding on the text
+  // replaced the row under the pointer each frame and no click landed
+  // (found by verify_b4).
+  let shownConflicts = "";
+  function drawConflicts(rows) {
+    const key = rows.map(r => r[0]).join("|");
+    if (key !== shownConflicts) {
+      shownConflicts = key;
+      setText("conflict-count", rows.length);
+      el("conflicts").classList.toggle("on", rows.length > 0);
+      el("conflict-none").hidden = rows.length > 0;
+      el("conflict-list").replaceChildren(...rows.map(([i]) => {
+        const li = document.createElement("li"), b = document.createElement("button");
+        b.type = "button"; b.dataset.i = i;
+        li.append(b);
+        return li;
+      }));
+    }
+    const bs = el("conflict-list").getElementsByTagName("button");
+    rows.forEach(([, t], k) => { if (bs[k].textContent !== t) bs[k].textContent = t; });
   }
 
   // A typed seed is used as given (to u32); blank or junk draws a fresh one.
@@ -484,10 +920,60 @@ window.TWR = (() => {
   }
 
   // B9: one wind per shift, so this runs on start, not every frame.
+  function drawLvp() {
+    const practice = app.shift_mode() === "practice";
+    el("lvp-tag").hidden = !app.lvp();
+    el("lvp-l").hidden = el("lvp-seg").hidden = !practice;
+    el("lvp-btn").setAttribute("aria-pressed", String(app.lvp()));
+  }
   function drawWind() {
     setText("wind", app.wind_text());
     setText("flow", app.flow());
-    setText("rwys", app.runways_text());
+    drawLvp();
+    shownRw = ""; // a new shift: redraw the picker
+    drawRunways();
+  }
+
+  // ---- C4: runway picker -----------------------------------------------------
+  // Rebuilt only when the list of ends changes (a switch of direction); a
+  // press only flips aria-pressed, so a button is never replaced under the
+  // pointer between pointerdown and click.
+  let shownRw = "", rwErr = "", rwEnds = "";
+  function drawRunways() {
+    setText("flow", app.flow());
+    const plan = app.can_plan();
+    for (const id of ["rw-dir-l", "rw-dir", "rw-land-l", "rw-land", "rw-dep-l", "rw-dep"]) el(id).hidden = !plan;
+    const rows = plan ? Array.from(app.runway_rows()) : [];
+    const status = plan ? Array.from(app.runway_status()) : [app.runways_text() + " · Practice: fixed"];
+    const target = plan ? app.runway_target() : "";
+    const key = [target, app.flow(), rows.join("|"), status.join("|"), rwErr].join("#");
+    if (key === shownRw) return;
+    shownRw = key;
+    for (const b of el("rw-dir").children) {
+      b.setAttribute("aria-pressed", String(b.dataset.flow === target));
+      b.textContent = b.dataset.flow === "west" ? "West" : "East";
+      if (b.dataset.flow === target && target !== app.flow()) b.textContent += " (waiting)";
+    }
+    const ends = rows.map(r => r.split("\t")[0]).join(" ");
+    if (ends !== rwEnds) {
+      rwEnds = ends;
+      for (const [id, role] of [["rw-land", "land"], ["rw-dep", "depart"]]) {
+        el(id).replaceChildren(...rows.map(r => {
+          const b = document.createElement("button");
+          b.type = "button"; b.dataset.end = r.split("\t")[0]; b.dataset.role = role; b.textContent = b.dataset.end;
+          return b;
+        }));
+      }
+    }
+    for (const r of rows) {
+      const [end, land, dep, tail, len] = r.split("\t");
+      for (const [id, on] of [["rw-land", land], ["rw-dep", dep]]) {
+        const b = el(id).querySelector(`[data-end="${end}"]`);
+        b.setAttribute("aria-pressed", on === "1" ? "true" : "false");
+        b.title = `${end}: ${len} m, ${tail} kt tailwind`;
+      }
+    }
+    setText("rw-note", [rwErr, ...status].filter(Boolean).join(" · "));
   }
 
   // ---- Score and result (B7) ----------------------------------------------
@@ -511,8 +997,11 @@ window.TWR = (() => {
   // nobody played would otherwise hold both records.
 
   const MIN_MOVES_FOR_DELAY_BEST = 10;
+  // PLAN-lvp.md A8: a fog shift lands fewer arrivals by design, so it keeps
+  // its own bests under "<mode>-lvp" in the same map. Added keys, not a new
+  // shape: v2 data loads unchanged, so no schema bump.
   function recordBests(mode, r) {
-    const b = state.bests[mode] ||= {};
+    const b = state.bests[mode + (app.lvp() ? "-lvp" : "")] ||= {};
     const tag = { seed: r.seed, date: r.date };
     const won = new Set();
     const take = (k, rec) => { b[k] = { ...rec, ...tag }; won.add(k); };
@@ -537,7 +1026,7 @@ window.TWR = (() => {
     const { b, won } = recordBests(mode, r);
     const surge = mode === "surge";
     setText("res-title", surge ? "Surge over" : "Shift over");
-    setText("res-sub", `${mode} · seed ${r.seed} · wind ${app.wind_text()}, ${app.flow()} flow · ${surge ? `held ${mmss(r.held)}, ended on the third incident` : "30:00"}`);
+    setText("res-sub", `${mode} · seed ${r.seed} · wind ${app.wind_text()}, ${app.flow()} flow${app.lvp() ? ", LVP" : ""} · ${surge ? `held ${mmss(r.held)}, ended on the third incident` : mmss(app.shift_len_s())}`);
     const best = (k, f) => b[k] ? f(b[k]) + (won.has(k) ? " · new best" : "") + ` · seed ${b[k].seed}` : "-";
     const rows = [
       ["Movements", `${r.movements} of ${r.offered} offered`, best("movements", x => `${x.n} of ${x.offered}`)],
@@ -554,6 +1043,28 @@ window.TWR = (() => {
       return tr;
     }));
     el("result").showModal();
+  }
+
+  // Real frame time always reaches the camera spring; `paused` stops only
+  // the sim (R1.5). False once the simulator has thrown.
+  function draw(dt) {
+    try { app.frame(dt, paused, dpr, reduce.matches, colours.bg, colours.fg, colours.dim, colours.line, colours.red, colours.apron, colours.term); return true; }
+    catch (e) { report("frame", "The simulator stopped.", String(e && e.message || e)); return false; }
+  }
+
+  // F2: eAIP cycle the airport files were typed from (PLAN-twr.md, Licence notes).
+  const AIRAC = "2026-10-29";
+  // Title screen: modal on every load, sim held (paused) behind it. Automated
+  // browsers (navigator.webdriver) skip it so the verify scripts that click
+  // straight away keep working; ?title=1 forces it for the title check.
+  function openTitle(force) {
+    el("t-airac").textContent = AIRAC;
+    el("t-osm").textContent = app.osm_base().slice(0, 10);
+    if (navigator.webdriver && !force) return;
+    const d = el("title");
+    paused = true;
+    d.addEventListener("close", () => { paused = false; el("paused").hidden = true; }, { once: true });
+    d.showModal();
   }
 
   function boot(wasmBase64) {
@@ -579,7 +1090,9 @@ window.TWR = (() => {
     el("shift-form").addEventListener("submit", e => {
       e.preventDefault();
       start(el("mode").value, parseSeed(el("seed-in").value));
-      el("start").blur();
+      // R1.6: Enter in the seed field leaves focus there, not on Start, and
+      // the key guard drops game keys while an input has focus.
+      document.activeElement.blur();
     });
     // Again and New seed close the dialog with their value; Esc closes it
     // with none and leaves the stopped map on view.
@@ -591,12 +1104,17 @@ window.TWR = (() => {
     });
     el("attr").textContent = `© OpenStreetMap contributors, data of ${app.osm_base().slice(0, 10)} · not for real-world navigation`;
     wireInput();
+    wireRadio();
+    openTitle(new URLSearchParams(location.search).get("title") === "1");
     let last = performance.now();
     function tick(now) {
       const dt = now - last;
       last = now;
-      try { app.frame(paused ? 0 : dt, dpr, reduce.matches, colours.bg, colours.fg, colours.dim, colours.line, colours.red); }
-      catch (e) { report("frame", "The simulator stopped.", String(e && e.message || e)); return; }
+      // R1.13: a pixel-ratio change at the same CSS size (window dragged to
+      // another screen) fires no ResizeObserver. One compare per frame
+      // catches it; a (resolution) media query did not fire under emulation.
+      if ((window.devicePixelRatio || 1) !== dpr) fit();
+      if (!draw(dt)) return;
       const s = Math.floor(app.game_seconds());
       setText("clock", `${pad(Math.floor(s / 60))}:${pad(s % 60)}`);
       setText("hover", app.hover_name() || "-");

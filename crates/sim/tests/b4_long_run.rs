@@ -41,6 +41,8 @@ fn shift(seed: u64, hours: u64) -> (World, Stats) {
             GoAround::Pilot(_) | GoAround::Weather(_) => c.stats.ga_pilot += 1,
             GoAround::Instructed => c.stats.ga_instructed += 1,
             GoAround::NoClearance => c.stats.ga_no_clearance += 1,
+            // These runs are clear weather: an LVP go-around here is a bug.
+            GoAround::LsaOccupied => panic!("LSA go-around without LVP"),
         }
     }
     (w, c.stats)

@@ -1,0 +1,404 @@
+# Proposed IGI name overrides for twr-osm. Live tables intentionally empty: chart evidence could not be mapped to OSM IDs with the available chart reader.
+# Source: AAI eAIP India, VIDP AD 2.24, AIRAC AMDT 10/2026; OSM extract 2026-11-05.
+
+[taxiway]
+
+[hold]
+
+[stand]
+
+# UNMATCHED — 346 unnamed taxiway ways. Each remains unmatched because visual chart-to-geometry association is not verified.
+# chart match unresolved; OSM way 181573674; endpoints 28.5485788,77.0672027 -> 28.5486025,77.0650063
+# chart match unresolved; OSM way 181573680; endpoints 28.5504851,77.0684093 -> 28.5499954,77.0688274
+# chart match unresolved; OSM way 181573689; endpoints 28.5488295,77.0679533 -> 28.5485433,77.067373
+# chart match unresolved; OSM way 181573695; endpoints 28.5481359,77.0692636 -> 28.5486318,77.0689283
+# chart match unresolved; OSM way 181578762; endpoints 28.547804,77.0686995 -> 28.5481359,77.0692636
+# chart match unresolved; OSM way 181578763; endpoints 28.548331,77.0683731 -> 28.547804,77.0686995
+# chart match unresolved; OSM way 181578765; endpoints 28.5486318,77.0689283 -> 28.548331,77.0683731
+# chart match unresolved; OSM way 930420277; endpoints 28.548017,77.067737 -> 28.5483511,77.0682644
+# chart match unresolved; OSM way 1181763333; endpoints 28.5483511,77.0682644 -> 28.5488295,77.0679533
+# chart match unresolved; OSM way 1181966544; endpoints 28.5497199,77.0682037 -> 28.5499954,77.0688274
+# chart match unresolved; OSM way 1181966545; endpoints 28.549492,77.069168 -> 28.5497977,77.0697444
+# chart match unresolved; OSM way 1181966546; endpoints 28.5502749,77.0693807 -> 28.5497977,77.0697444
+# chart match unresolved; OSM way 1564844549; endpoints 28.5497199,77.0682037 -> 28.5504851,77.0684093
+# chart match unresolved; OSM way 1564844551; endpoints 28.548017,77.067737 -> 28.5488295,77.0679533
+# chart match unresolved; OSM way 1564844554; endpoints 28.5486318,77.0689283 -> 28.547804,77.0686995
+# chart match unresolved; OSM way 1564844555; endpoints 28.5502749,77.0693807 -> 28.549492,77.069168
+# chart match unresolved; OSM way 181573697; endpoints 28.5517884,77.0697972 -> 28.5522823,77.0694373
+# chart match unresolved; OSM way 181573714; endpoints 28.5522934,77.0693821 -> 28.552783,77.0690171
+# chart match unresolved; OSM way 181573721; endpoints 28.5526402,77.0700406 -> 28.5531439,77.0696374
+# chart match unresolved; OSM way 181578761; endpoints 28.5522823,77.0694373 -> 28.5525558,77.0700148
+# chart match unresolved; OSM way 976100010; endpoints 28.5526637,77.0687107 -> 28.5522302,77.0688877
+# chart match unresolved; OSM way 976100011; endpoints 28.5527668,77.0684646 -> 28.5529278,77.0690722
+# chart match unresolved; OSM way 976100012; endpoints 28.5527795,77.0683851 -> 28.55312,77.0670141
+# chart match unresolved; OSM way 1181738223; endpoints 28.552372,77.0692222 -> 28.55311,77.0670499
+# chart match unresolved; OSM way 1181738224; endpoints 28.5527795,77.0683851 -> 28.55312,77.0670141
+# chart match unresolved; OSM way 1183367831; endpoints 28.5519774,77.0688339 -> 28.5522823,77.0694373
+# chart match unresolved; OSM way 1183367833; endpoints 28.552783,77.0690171 -> 28.5531439,77.0696374
+# chart match unresolved; OSM way 1564844556; endpoints 28.5525558,77.0700148 -> 28.5517884,77.0697972
+# chart match unresolved; OSM way 181578760; endpoints 28.5525558,77.0700148 -> 28.5520747,77.0703368
+# chart match unresolved; OSM way 181578764; endpoints 28.5520747,77.0703368 -> 28.5517884,77.0697972
+# chart match unresolved; OSM way 1183367834; endpoints 28.5529287,77.0705733 -> 28.5525558,77.0700148
+# chart match unresolved; OSM way 181573702; endpoints 28.5504085,77.0832945 -> 28.5496699,77.087936
+# chart match unresolved; OSM way 181587257; endpoints 28.5508652,77.0755441 -> 28.5503455,77.0759198
+# chart match unresolved; OSM way 187998467; endpoints 28.5499145,77.0836429 -> 28.5504085,77.0832945
+# chart match unresolved; OSM way 313547221; endpoints 28.5511226,77.0784075 -> 28.5508826,77.0793744
+# chart match unresolved; OSM way 313547223; endpoints 28.5501229,77.0827304 -> 28.5499145,77.0836429
+# chart match unresolved; OSM way 626287093; endpoints 28.5509317,77.0771151 -> 28.5504315,77.0774609
+# chart match unresolved; OSM way 1181999325; endpoints 28.5509317,77.0771151 -> 28.550348,77.0771934
+# chart match unresolved; OSM way 1564844576; endpoints 28.5508652,77.0755441 -> 28.5506552,77.0764867
+# chart match unresolved; OSM way 1564844581; endpoints 28.5503455,77.0759198 -> 28.5511411,77.0761448
+# chart match unresolved; OSM way 181573720; endpoints 28.5468034,77.0715222 -> 28.5475618,77.0719151
+# chart match unresolved; OSM way 181578758; endpoints 28.5468798,77.0739973 -> 28.5470185,77.0744718
+# chart match unresolved; OSM way 181578759; endpoints 28.5471577,77.0738676 -> 28.5472824,77.0743387
+# chart match unresolved; OSM way 181578766; endpoints 28.5476522,77.0746501 -> 28.5469422,77.0748646
+# chart match unresolved; OSM way 181587255; endpoints 28.5503455,77.0759198 -> 28.5506552,77.0764867
+# chart match unresolved; OSM way 901366769; endpoints 28.5468811,77.0714444 -> 28.5497795,77.0720103
+# chart match unresolved; OSM way 1182005226; endpoints 28.5497795,77.0720103 -> 28.5494518,77.0713488
+# chart match unresolved; OSM way 1182005227; endpoints 28.5502698,77.0721438 -> 28.5489698,77.0735949
+# chart match unresolved; OSM way 1534202676; endpoints 28.5477618,77.0710137 -> 28.5480388,77.0715316
+# chart match unresolved; OSM way 1534202677; endpoints 28.5480388,77.0715316 -> 28.5475618,77.0719151
+# chart match unresolved; OSM way 187998463; endpoints 28.5501229,77.0827304 -> 28.5504085,77.0832945
+# chart match unresolved; OSM way 1181999109; endpoints 28.5495449,77.0830389 -> 28.5489387,77.0828152
+# chart match unresolved; OSM way 1534202679; endpoints 28.5499986,77.0829474 -> 28.5507189,77.0824429
+# chart match unresolved; OSM way 1534202680; endpoints 28.5502626,77.0821135 -> 28.5506153,77.0825082
+# chart match unresolved; OSM way 1534202681; endpoints 28.5502271,77.0827738 -> 28.5500466,77.0830578
+# chart match unresolved; OSM way 1564844621; endpoints 28.5501821,77.0785458 -> 28.5505277,77.0787599
+# chart match unresolved; OSM way 181573718; endpoints 28.5424935,77.0916987 -> 28.5433232,77.0917043
+# chart match unresolved; OSM way 181573719; endpoints 28.5417517,77.0951941 -> 28.5425902,77.0951314
+# chart match unresolved; OSM way 181573708; endpoints 28.5421652,77.0971044 -> 28.5421031,77.0965401
+# chart match unresolved; OSM way 901366743; endpoints 28.5476271,77.0960583 -> 28.5472568,77.0976505
+# chart match unresolved; OSM way 930567055; endpoints 28.5421031,77.0965401 -> 28.5425908,77.0970224
+# chart match unresolved; OSM way 930567056; endpoints 28.5422885,77.0965216 -> 28.5425908,77.0970224
+# chart match unresolved; OSM way 181573711; endpoints 28.5476473,77.0874834 -> 28.5479871,77.0880454
+# chart match unresolved; OSM way 181573713; endpoints 28.5448432,77.0867127 -> 28.54433,77.0870157
+# chart match unresolved; OSM way 187998465; endpoints 28.5488374,77.0883095 -> 28.5493078,77.0879633
+# chart match unresolved; OSM way 187998468; endpoints 28.5490437,77.0874194 -> 28.5493078,77.0879633
+# chart match unresolved; OSM way 610505510; endpoints 28.5484711,77.0877139 -> 28.5479871,77.0880454
+# chart match unresolved; OSM way 610505511; endpoints 28.5484711,77.0877139 -> 28.5481906,77.0871727
+# chart match unresolved; OSM way 610505512; endpoints 28.5490437,77.0874194 -> 28.5485413,77.0877355
+# chart match unresolved; OSM way 610505513; endpoints 28.5485413,77.0877355 -> 28.5488374,77.0883095
+# chart match unresolved; OSM way 610505514; endpoints 28.5476473,77.0874834 -> 28.5481906,77.0871727
+# chart match unresolved; OSM way 1182004782; endpoints 28.5465203,77.0871735 -> 28.5459606,77.0876491
+# chart match unresolved; OSM way 1182004783; endpoints 28.5465203,77.0871735 -> 28.5462307,77.0863856
+# chart match unresolved; OSM way 1534202683; endpoints 28.5488533,77.0878314 -> 28.5493097,77.0887697
+# chart match unresolved; OSM way 1534202684; endpoints 28.5487729,77.0885883 -> 28.5492027,77.0885462
+# chart match unresolved; OSM way 1534202685; endpoints 28.5489616,77.0877651 -> 28.5489671,77.0880497
+# chart match unresolved; OSM way 1564844583; endpoints 28.5445166,77.086138 -> 28.5465203,77.0871735
+# chart match unresolved; OSM way 1564844617; endpoints 28.5496699,77.087936 -> 28.5493078,77.0879633
+# chart match unresolved; OSM way 187998056; endpoints 28.5481994,77.0910656 -> 28.5487802,77.0916356
+# chart match unresolved; OSM way 313547206; endpoints 28.5484731,77.0918532 -> 28.5479067,77.09234
+# chart match unresolved; OSM way 313547209; endpoints 28.5479067,77.09234 -> 28.5481838,77.0925638
+# chart match unresolved; OSM way 610505505; endpoints 28.5475504,77.0917033 -> 28.5470623,77.0920562
+# chart match unresolved; OSM way 610505506; endpoints 28.5481298,77.0913799 -> 28.5476236,77.0917258
+# chart match unresolved; OSM way 610505507; endpoints 28.5476236,77.0917258 -> 28.5479067,77.09234
+# chart match unresolved; OSM way 610505509; endpoints 28.5472787,77.0911263 -> 28.5475504,77.0917033
+# chart match unresolved; OSM way 901366744; endpoints 28.547257,77.0959496 -> 28.5470337,77.0961209
+# chart match unresolved; OSM way 901366745; endpoints 28.5471422,77.0956414 -> 28.547257,77.0959496
+# chart match unresolved; OSM way 181573672; endpoints 28.5516899,77.0719695 -> 28.5519419,77.0726014
+# chart match unresolved; OSM way 181573687; endpoints 28.5523103,77.0732142 -> 28.5519419,77.0726014
+# chart match unresolved; OSM way 181587237; endpoints 28.5515127,77.0767145 -> 28.5520038,77.076402
+# chart match unresolved; OSM way 181587242; endpoints 28.5512302,77.0761714 -> 28.5515127,77.0767145
+# chart match unresolved; OSM way 181587246; endpoints 28.5517078,77.0758306 -> 28.5512302,77.0761714
+# chart match unresolved; OSM way 181587249; endpoints 28.5511411,77.0761448 -> 28.5508652,77.0755441
+# chart match unresolved; OSM way 181587256; endpoints 28.5520038,77.076402 -> 28.5517078,77.0758306
+# chart match unresolved; OSM way 1181735508; endpoints 28.5520166,77.0726225 -> 28.55253,77.0722925
+# chart match unresolved; OSM way 1181736824; endpoints 28.5519419,77.0726014 -> 28.5514508,77.0730033
+# chart match unresolved; OSM way 181573709; endpoints 28.5513963,77.0790182 -> 28.5527613,77.0771386
+# chart match unresolved; OSM way 181587236; endpoints 28.5562276,77.079121 -> 28.556718,77.0788264
+# chart match unresolved; OSM way 181587239; endpoints 28.5525521,77.0780603 -> 28.5522502,77.0775026
+# chart match unresolved; OSM way 181587248; endpoints 28.5530364,77.0777357 -> 28.5525521,77.0780603
+# chart match unresolved; OSM way 187998466; endpoints 28.5508826,77.0793744 -> 28.5513963,77.0790182
+# chart match unresolved; OSM way 187998469; endpoints 28.5511226,77.0784075 -> 28.5513963,77.0790182
+# chart match unresolved; OSM way 263293656; endpoints 28.555932,77.0785916 -> 28.5562276,77.079121
+# chart match unresolved; OSM way 930420273; endpoints 28.5509955,77.0771332 -> 28.5512839,77.0777012
+# chart match unresolved; OSM way 1564844582; endpoints 28.5513872,77.0772449 -> 28.5512839,77.0777012
+# chart match unresolved; OSM way 181587247; endpoints 28.5514911,77.0768035 -> 28.5509955,77.0771332
+# chart match unresolved; OSM way 181587259; endpoints 28.5564287,77.0782276 -> 28.5603816,77.0794006
+# chart match unresolved; OSM way 187990233; endpoints 28.5636083,77.0803137 -> 28.5640696,77.079977
+# chart match unresolved; OSM way 187998059; endpoints 28.5628595,77.083492 -> 28.5622362,77.0829868
+# chart match unresolved; OSM way 930420275; endpoints 28.5517718,77.0773543 -> 28.5514911,77.0768035
+# chart match unresolved; OSM way 187990243; endpoints 28.5630848,77.0807148 -> 28.5635958,77.0803656
+# chart match unresolved; OSM way 187998054; endpoints 28.5606732,77.0799984 -> 28.5601511,77.0803487
+# chart match unresolved; OSM way 187998057; endpoints 28.5601511,77.0803487 -> 28.5598623,77.0797561
+# chart match unresolved; OSM way 1534202688; endpoints 28.5635958,77.0803656 -> 28.5638343,77.0809303
+# chart match unresolved; OSM way 1534202689; endpoints 28.5634045,77.0812085 -> 28.5638343,77.0809303
+# chart match unresolved; OSM way 1564844625; endpoints 28.563326,77.0797532 -> 28.5635958,77.0803656
+# chart match unresolved; OSM way 313547207; endpoints 28.550913,77.0902243 -> 28.5512629,77.090196
+# chart match unresolved; OSM way 313547215; endpoints 28.5512374,77.0905338 -> 28.5513083,77.0902847
+# chart match unresolved; OSM way 187990200; endpoints 28.5638894,77.0917001 -> 28.5638876,77.0911524
+# chart match unresolved; OSM way 187990220; endpoints 28.5635501,77.0910345 -> 28.5639751,77.090775
+# chart match unresolved; OSM way 187990236; endpoints 28.5612569,77.0903979 -> 28.5611008,77.08997
+# chart match unresolved; OSM way 187990248; endpoints 28.5616125,77.0904529 -> 28.5613593,77.0899673
+# chart match unresolved; OSM way 313547217; endpoints 28.5512509,77.0897874 -> 28.5513083,77.0902847
+# chart match unresolved; OSM way 901366719; endpoints 28.5604998,77.0964906 -> 28.5602755,77.0966455
+# chart match unresolved; OSM way 901366720; endpoints 28.5604998,77.0964906 -> 28.5606072,77.0967456
+# chart match unresolved; OSM way 1564844595; endpoints 28.5601694,77.0966147 -> 28.5599276,77.096156
+# chart match unresolved; OSM way 1564844606; endpoints 28.5635501,77.0910345 -> 28.5638894,77.0917001
+# chart match unresolved; OSM way 187990230; endpoints 28.5614665,77.089524 -> 28.5609591,77.0898793
+# chart match unresolved; OSM way 187990251; endpoints 28.5613769,77.0877667 -> 28.5619021,77.0876102
+# chart match unresolved; OSM way 1182643549; endpoints 28.5622792,77.085992 -> 28.5617677,77.0855254
+# chart match unresolved; OSM way 901366718; endpoints 28.5618147,77.0907644 -> 28.5620767,77.0905901
+# chart match unresolved; OSM way 901366721; endpoints 28.5616793,77.090471 -> 28.5618147,77.0907644
+# chart match unresolved; OSM way 1182244777; endpoints 28.5637996,77.0913347 -> 28.5638067,77.0915057
+# chart match unresolved; OSM way 1564844598; endpoints 28.5611775,77.0907518 -> 28.5616125,77.0904529
+# chart match unresolved; OSM way 181573673; endpoints 28.5425908,77.0970224 -> 28.5421297,77.0972708
+# chart match unresolved; OSM way 181587244; endpoints 28.5405999,77.1044043 -> 28.5408905,77.1049616
+# chart match unresolved; OSM way 181587250; endpoints 28.5401215,77.1047568 -> 28.5405999,77.1044043
+# chart match unresolved; OSM way 181587252; endpoints 28.5408905,77.1049616 -> 28.540402,77.1053312
+# chart match unresolved; OSM way 181587253; endpoints 28.540402,77.1053312 -> 28.5401215,77.1047568
+# chart match unresolved; OSM way 901366736; endpoints 28.5439838,77.105328 -> 28.5434822,77.1056793
+# chart match unresolved; OSM way 1181446701; endpoints 28.5416956,77.1094671 -> 28.5414075,77.1088658
+# chart match unresolved; OSM way 1181446702; endpoints 28.5414045,77.1088795 -> 28.5408373,77.1092195
+# chart match unresolved; OSM way 1564844560; endpoints 28.539215,77.1087429 -> 28.539641,77.108865
+# chart match unresolved; OSM way 1564844568; endpoints 28.5408373,77.1092195 -> 28.5416956,77.1094671
+# chart match unresolved; OSM way 1564844586; endpoints 28.5401215,77.1047568 -> 28.5408905,77.1049616
+# chart match unresolved; OSM way 1564844588; endpoints 28.5418339,77.1052281 -> 28.5425011,77.1054122
+# chart match unresolved; OSM way 181573715; endpoints 28.5439838,77.105328 -> 28.5442938,77.10591
+# chart match unresolved; OSM way 1182043895; endpoints 28.5441843,77.110193 -> 28.5438965,77.1096423
+# chart match unresolved; OSM way 1182043967; endpoints 28.5438965,77.1096423 -> 28.5434145,77.1099595
+# chart match unresolved; OSM way 1182044357; endpoints 28.5433269,77.109943 -> 28.5430495,77.109431
+# chart match unresolved; OSM way 1182044455; endpoints 28.5430495,77.109431 -> 28.5425871,77.1097309
+# chart match unresolved; OSM way 1533485930; endpoints 28.5442917,77.0975049 -> 28.5437332,77.0980252
+# chart match unresolved; OSM way 1533485931; endpoints 28.5442917,77.0975049 -> 28.5439788,77.0968799
+# chart match unresolved; OSM way 1564844585; endpoints 28.5435252,77.0973051 -> 28.5442917,77.0975049
+# chart match unresolved; OSM way 1564844589; endpoints 28.5434822,77.1056793 -> 28.5442938,77.10591
+# chart match unresolved; OSM way 181573703; endpoints 28.5460972,77.0980103 -> 28.5456089,77.0983418
+# chart match unresolved; OSM way 181587251; endpoints 28.5456089,77.0983418 -> 28.5453115,77.0977885
+# chart match unresolved; OSM way 181587254; endpoints 28.5458196,77.0974439 -> 28.5460972,77.0980103
+# chart match unresolved; OSM way 181587258; endpoints 28.5453115,77.0977885 -> 28.5458196,77.0974439
+# chart match unresolved; OSM way 901366739; endpoints 28.5492766,77.0974644 -> 28.5476465,77.0969734
+# chart match unresolved; OSM way 901366740; endpoints 28.5492766,77.0974644 -> 28.5493641,77.097648
+# chart match unresolved; OSM way 901366741; endpoints 28.5494252,77.0973719 -> 28.5492766,77.0974644
+# chart match unresolved; OSM way 901366742; endpoints 28.5468739,77.0975401 -> 28.5467608,77.0972945
+# chart match unresolved; OSM way 1534202682; endpoints 28.5454726,77.0976458 -> 28.5455429,77.0986288
+# chart match unresolved; OSM way 1183367828; endpoints 28.5442938,77.10591 -> 28.5448433,77.1055555
+# chart match unresolved; OSM way 1181446211; endpoints 28.5412326,77.1116709 -> 28.5409361,77.1110597
+# chart match unresolved; OSM way 1181446212; endpoints 28.5409515,77.1109917 -> 28.5403746,77.1113524
+# chart match unresolved; OSM way 1181447613; endpoints 28.5412019,77.1098188 -> 28.5415299,77.11045
+# chart match unresolved; OSM way 1181934250; endpoints 28.5436784,77.110597 -> 28.5440148,77.1111118
+# chart match unresolved; OSM way 1181944627; endpoints 28.541198,77.1098366 -> 28.5406379,77.1101931
+# chart match unresolved; OSM way 1181945191; endpoints 28.5428528,77.1121099 -> 28.5425446,77.1115492
+# chart match unresolved; OSM way 1181945244; endpoints 28.5439049,77.1110883 -> 28.5435028,77.1113656
+# chart match unresolved; OSM way 1181945371; endpoints 28.5434705,77.1115015 -> 28.5432141,77.1109308
+# chart match unresolved; OSM way 1181945397; endpoints 28.5436784,77.110597 -> 28.5432141,77.1109308
+# chart match unresolved; OSM way 1181945507; endpoints 28.5431003,77.1109076 -> 28.5426374,77.1112179
+# chart match unresolved; OSM way 1181945551; endpoints 28.5426374,77.1112179 -> 28.5423393,77.1106824
+# chart match unresolved; OSM way 1181945559; endpoints 28.5428257,77.1103904 -> 28.5423393,77.1106824
+# chart match unresolved; OSM way 1182044082; endpoints 28.5434145,77.1099595 -> 28.5437016,77.1104953
+# chart match unresolved; OSM way 1182044284; endpoints 28.5441843,77.110193 -> 28.5437016,77.1104953
+# chart match unresolved; OSM way 1182044492; endpoints 28.5425871,77.1097309 -> 28.5428597,77.1102474
+# chart match unresolved; OSM way 1182045385; endpoints 28.5433269,77.109943 -> 28.5428597,77.1102474
+# chart match unresolved; OSM way 1183367829; endpoints 28.5428528,77.1121099 -> 28.5420993,77.1119002
+# chart match unresolved; OSM way 1564844561; endpoints 28.539015,77.1097082 -> 28.5394349,77.1098343
+# chart match unresolved; OSM way 1564844565; endpoints 28.5395594,77.1109883 -> 28.5387947,77.1106653
+# chart match unresolved; OSM way 1564844566; endpoints 28.5412326,77.1116709 -> 28.5403746,77.1113524
+# chart match unresolved; OSM way 1564844567; endpoints 28.5406379,77.1101931 -> 28.5415299,77.11045
+# chart match unresolved; OSM way 1564844573; endpoints 28.5428257,77.1103904 -> 28.5426374,77.1112179
+# chart match unresolved; OSM way 901366776; endpoints 28.5500939,77.1120018 -> 28.5513982,77.1123913
+# chart match unresolved; OSM way 1429473439; endpoints 28.5441843,77.110193 -> 28.5443364,77.1102588
+# chart match unresolved; OSM way 1182045900; endpoints 28.5450877,77.1104781 -> 28.5454574,77.1105944
+# chart match unresolved; OSM way 1182045902; endpoints 28.5448708,77.1113777 -> 28.5452422,77.1114925
+# chart match unresolved; OSM way 1429473399; endpoints 28.5500939,77.1120018 -> 28.5454574,77.1105944
+# chart match unresolved; OSM way 1429473423; endpoints 28.5450877,77.1104781 -> 28.5443364,77.1102588
+# chart match unresolved; OSM way 187990253; endpoints 28.5597107,77.1092641 -> 28.5604605,77.10971
+# chart match unresolved; OSM way 1429441640; endpoints 28.5641321,77.1069796 -> 28.5637774,77.106874
+# chart match unresolved; OSM way 1429441644; endpoints 28.5621956,77.1067513 -> 28.5626381,77.1118064
+# chart match unresolved; OSM way 1429441646; endpoints 28.5632138,77.1023494 -> 28.5636395,77.1074706
+# chart match unresolved; OSM way 1429441647; endpoints 28.5633869,77.1057906 -> 28.5640204,77.1058034
+# chart match unresolved; OSM way 1429481008; endpoints 28.5633757,77.101639 -> 28.5640056,77.1000874
+# chart match unresolved; OSM way 1564844594; endpoints 28.5583624,77.1029547 -> 28.5586863,77.1034796
+# chart match unresolved; OSM way 187990192; endpoints 28.5601694,77.0966147 -> 28.5597692,77.0968541
+# chart match unresolved; OSM way 187990250; endpoints 28.5619521,77.0995612 -> 28.5628701,77.0995691
+# chart match unresolved; OSM way 1182244634; endpoints 28.5623514,77.0974202 -> 28.5623503,77.0978214
+# chart match unresolved; OSM way 1182244635; endpoints 28.5624612,77.097361 -> 28.5624528,77.097828
+# chart match unresolved; OSM way 1564844596; endpoints 28.5625501,77.0969657 -> 28.5621026,77.097194
+# chart match unresolved; OSM way 1564844608; endpoints 28.5621026,77.097194 -> 28.5624528,77.097828
+# chart match unresolved; OSM way 379844111; endpoints 28.5607896,77.104597 -> 28.5604722,77.1040083
+# chart match unresolved; OSM way 379844112; endpoints 28.5586863,77.1034796 -> 28.5581879,77.1037049
+# chart match unresolved; OSM way 1523937945; endpoints 28.560676,77.1050898 -> 28.5613365,77.1055164
+# chart match unresolved; OSM way 1564844593; endpoints 28.5604722,77.1040083 -> 28.5609971,77.1036427
+# chart match unresolved; OSM way 1429459865; endpoints 28.5561078,77.1191167 -> 28.5571548,77.1194328
+# chart match unresolved; OSM way 1429459868; endpoints 28.5568676,77.1170476 -> 28.5570942,77.1169305
+# chart match unresolved; OSM way 1429459869; endpoints 28.5568676,77.1170476 -> 28.5570123,77.1172965
+# chart match unresolved; OSM way 1429459870; endpoints 28.5565261,77.1191429 -> 28.5566525,77.1188515
+# chart match unresolved; OSM way 1429459871; endpoints 28.5563519,77.1191902 -> 28.5565261,77.1191429
+# chart match unresolved; OSM way 1429459872; endpoints 28.5567223,77.1191738 -> 28.5566525,77.1188515
+# chart match unresolved; OSM way 1429459873; endpoints 28.5568688,77.119346 -> 28.5567223,77.1191738
+# chart match unresolved; OSM way 1429459886; endpoints 28.5569951,77.1193839 -> 28.5571719,77.1193542
+# chart match unresolved; OSM way 1429459887; endpoints 28.5571416,77.1194842 -> 28.557262,77.11989
+# chart match unresolved; OSM way 1429459888; endpoints 28.5569951,77.1193839 -> 28.5571416,77.1194842
+# chart match unresolved; OSM way 1429438369; endpoints 28.5640258,77.1130553 -> 28.5638154,77.1132192
+# chart match unresolved; OSM way 1429438370; endpoints 28.5638154,77.1132192 -> 28.5639385,77.1134653
+# chart match unresolved; OSM way 1429438433; endpoints 28.5613656,77.1162997 -> 28.561663,77.1160398
+# chart match unresolved; OSM way 1429441173; endpoints 28.5599702,77.1164437 -> 28.5602721,77.1160787
+# chart match unresolved; OSM way 1429459884; endpoints 28.5571548,77.1194328 -> 28.5573544,77.1194852
+# chart match unresolved; OSM way 1429459885; endpoints 28.5571719,77.1193542 -> 28.5574543,77.1190581
+# chart match unresolved; OSM way 1429464141; endpoints 28.5571477,77.1150657 -> 28.5575964,77.1147648
+# chart match unresolved; OSM way 1429464143; endpoints 28.5571477,77.1150657 -> 28.5574101,77.1155865
+# chart match unresolved; OSM way 1429464152; endpoints 28.5580825,77.116333 -> 28.5582392,77.1161
+# chart match unresolved; OSM way 1526392859; endpoints 28.557262,77.11989 -> 28.5577027,77.1195862
+# chart match unresolved; OSM way 1429438445; endpoints 28.5602721,77.1160787 -> 28.5604908,77.116057
+# chart match unresolved; OSM way 1429438446; endpoints 28.5603161,77.1159265 -> 28.5604908,77.116057
+# chart match unresolved; OSM way 1429441174; endpoints 28.5603161,77.1159265 -> 28.5601978,77.1154144
+# chart match unresolved; OSM way 1429441641; endpoints 28.5625004,77.110684 -> 28.5628371,77.1109438
+# chart match unresolved; OSM way 1429441645; endpoints 28.5623825,77.1100881 -> 28.5630351,77.1100867
+# chart match unresolved; OSM way 1429464135; endpoints 28.5581383,77.1143959 -> 28.558591,77.1141207
+# chart match unresolved; OSM way 1429464136; endpoints 28.5580612,77.1143746 -> 28.5578026,77.1138759
+# chart match unresolved; OSM way 1429464138; endpoints 28.5573549,77.1141646 -> 28.5576204,77.1146637
+# chart match unresolved; OSM way 1429464139; endpoints 28.5576204,77.1146637 -> 28.5580612,77.1143746
+# chart match unresolved; OSM way 1429464140; endpoints 28.5581383,77.1143959 -> 28.558417,77.1148825
+# chart match unresolved; OSM way 1429464144; endpoints 28.5574101,77.1155865 -> 28.5578455,77.1152726
+# chart match unresolved; OSM way 1429464145; endpoints 28.5575964,77.1147648 -> 28.5578455,77.1152726
+# chart match unresolved; OSM way 1429464146; endpoints 28.5579296,77.1152966 -> 28.5583888,77.1150015
+# chart match unresolved; OSM way 1429464147; endpoints 28.5579296,77.1152966 -> 28.5581988,77.1158294
+# chart match unresolved; OSM way 1429464150; endpoints 28.5586015,77.1154793 -> 28.558302,77.1154042
+# chart match unresolved; OSM way 1429464151; endpoints 28.5582392,77.1161 -> 28.558867,77.1153813
+# chart match unresolved; OSM way 1429464153; endpoints 28.558546,77.1147855 -> 28.5592047,77.1149882
+# chart match unresolved; OSM way 1429464154; endpoints 28.558478,77.1146201 -> 28.558546,77.1147855
+# chart match unresolved; OSM way 1429464155; endpoints 28.5585039,77.1145163 -> 28.5585138,77.1146962
+# chart match unresolved; OSM way 1429646749; endpoints 28.5594857,77.1108211 -> 28.559346,77.110848
+# chart match unresolved; OSM way 1429646752; endpoints 28.5573549,77.1141646 -> 28.5577102,77.1142696
+# chart match unresolved; OSM way 1429646753; endpoints 28.5584497,77.1110589 -> 28.5584835,77.1107149
+# chart match unresolved; OSM way 1429646754; endpoints 28.5584497,77.1110589 -> 28.5586386,77.1107942
+# chart match unresolved; OSM way 1429646755; endpoints 28.5584835,77.1107149 -> 28.5583332,77.1105688
+# chart match unresolved; OSM way 1429646756; endpoints 28.5586386,77.1107942 -> 28.558832,77.1107203
+# chart match unresolved; OSM way 1564844592; endpoints 28.5577102,77.1142696 -> 28.5578026,77.1138759
+# chart match unresolved; OSM way 1429438416; endpoints 28.5613501,77.1173909 -> 28.5615662,77.1172379
+# chart match unresolved; OSM way 1429438417; endpoints 28.5614768,77.1176412 -> 28.5613501,77.1173909
+# chart match unresolved; OSM way 1429438418; endpoints 28.5612351,77.117358 -> 28.5613826,77.1173244
+# chart match unresolved; OSM way 1429438419; endpoints 28.5612351,77.117358 -> 28.5613569,77.117487
+# chart match unresolved; OSM way 1429438420; endpoints 28.561261,77.1177794 -> 28.5614768,77.1176412
+# chart match unresolved; OSM way 1429438421; endpoints 28.5615662,77.1172379 -> 28.5614406,77.1170049
+# chart match unresolved; OSM way 1429438422; endpoints 28.5611353,77.1173024 -> 28.5614227,77.1170694
+# chart match unresolved; OSM way 1429438423; endpoints 28.5611252,77.11735 -> 28.5612747,77.1177111
+# chart match unresolved; OSM way 1429438424; endpoints 28.5611299,77.1173274 -> 28.5612351,77.117358
+# chart match unresolved; OSM way 1429438431; endpoints 28.5612437,77.1162834 -> 28.5613656,77.1162997
+# chart match unresolved; OSM way 1429438432; endpoints 28.5612437,77.1162834 -> 28.5613762,77.1163599
+# chart match unresolved; OSM way 1429438434; endpoints 28.5613762,77.1163599 -> 28.5615022,77.1167328
+# chart match unresolved; OSM way 1429438436; endpoints 28.5610087,77.1172901 -> 28.5611299,77.1173274
+# chart match unresolved; OSM way 1429438437; endpoints 28.5611353,77.1173024 -> 28.5610087,77.1172901
+# chart match unresolved; OSM way 1429438438; endpoints 28.5611252,77.11735 -> 28.5610087,77.1172901
+# chart match unresolved; OSM way 1429438442; endpoints 28.5597406,77.1173936 -> 28.559894,77.1178807
+# chart match unresolved; OSM way 1429438443; endpoints 28.5600467,77.1170837 -> 28.5602534,77.1170652
+# chart match unresolved; OSM way 1429438444; endpoints 28.560077,77.1169291 -> 28.5602534,77.1170652
+# chart match unresolved; OSM way 1429441169; endpoints 28.559894,77.1178807 -> 28.5600432,77.1179835
+# chart match unresolved; OSM way 1429441170; endpoints 28.5596331,77.1178736 -> 28.559847,77.1179347
+# chart match unresolved; OSM way 1429441171; endpoints 28.5600467,77.1170837 -> 28.5597406,77.1173936
+# chart match unresolved; OSM way 1429441172; endpoints 28.560077,77.1169291 -> 28.5599702,77.1164437
+# chart match unresolved; OSM way 1429459892; endpoints 28.5591894,77.1177294 -> 28.5596331,77.1178736
+# chart match unresolved; OSM way 1429459893; endpoints 28.5591894,77.1177294 -> 28.5597406,77.1173936
+# chart match unresolved; OSM way 1429459894; endpoints 28.5577655,77.1177172 -> 28.5579108,77.1174779
+# chart match unresolved; OSM way 1429459895; endpoints 28.5579701,77.1172473 -> 28.5579289,77.1169989
+# chart match unresolved; OSM way 1429459896; endpoints 28.5581299,77.1174313 -> 28.5579701,77.1172473
+# chart match unresolved; OSM way 1429459897; endpoints 28.5579108,77.1174779 -> 28.5581299,77.1174313
+# chart match unresolved; OSM way 1526392857; endpoints 28.5574543,77.1190581 -> 28.5577027,77.1195862
+# chart match unresolved; OSM way 1526392858; endpoints 28.5573544,77.1194852 -> 28.5577027,77.1195862
+# chart match unresolved; OSM way 1564844603; endpoints 28.5657292,77.0825224 -> 28.5663977,77.0839105
+# chart match unresolved; OSM way 187990247; endpoints 28.5655393,77.0839886 -> 28.5663804,77.083877
+# chart match unresolved; OSM way 626285219; endpoints 28.5674918,77.0856347 -> 28.5670253,77.0852169
+# chart match unresolved; OSM way 901370471; endpoints 28.5689627,77.0898869 -> 28.5689126,77.0869109
+# chart match unresolved; OSM way 1182399574; endpoints 28.5695564,77.0875368 -> 28.569011,77.0878169
+# chart match unresolved; OSM way 1182399824; endpoints 28.569308,77.0887077 -> 28.5689799,77.0890821
+# chart match unresolved; OSM way 1534202687; endpoints 28.5653196,77.08494 -> 28.5655797,77.0854491
+# chart match unresolved; OSM way 1534202691; endpoints 28.5657683,77.0837132 -> 28.5652653,77.0834997
+# chart match unresolved; OSM way 1564844604; endpoints 28.5651233,77.0857899 -> 28.5655797,77.0854491
+# chart match unresolved; OSM way 626285215; endpoints 28.5662519,77.0904686 -> 28.5658491,77.0909073
+# chart match unresolved; OSM way 626285216; endpoints 28.5651338,77.0907274 -> 28.5657008,77.0915575
+# chart match unresolved; OSM way 626285217; endpoints 28.5640899,77.0902799 -> 28.5645567,77.0908517
+# chart match unresolved; OSM way 1527775119; endpoints 28.565251,77.0956834 -> 28.564659,77.096064
+# chart match unresolved; OSM way 187990136; endpoints 28.5669545,77.0861091 -> 28.570539,77.0889766
+# chart match unresolved; OSM way 1051534031; endpoints 28.5705319,77.0892353 -> 28.5689971,77.0883357
+# chart match unresolved; OSM way 1429633221; endpoints 28.5722992,77.0993669 -> 28.5718451,77.093559
+# chart match unresolved; OSM way 1488896263; endpoints 28.5689532,77.0903334 -> 28.5689627,77.0898869
+# chart match unresolved; OSM way 1429481001; endpoints 28.5661723,77.0974564 -> 28.5667783,77.0967681
+# chart match unresolved; OSM way 1429481002; endpoints 28.5667783,77.0967681 -> 28.5672604,77.0966908
+# chart match unresolved; OSM way 1429481003; endpoints 28.5658648,77.0978097 -> 28.5661723,77.0974564
+# chart match unresolved; OSM way 1429481009; endpoints 28.5640056,77.1000874 -> 28.5651825,77.0985869
+# chart match unresolved; OSM way 1429481010; endpoints 28.5649982,77.0987963 -> 28.5652509,77.0987215
+# chart match unresolved; OSM way 1429481011; endpoints 28.5652509,77.0987215 -> 28.565554,77.0991572
+# chart match unresolved; OSM way 1429481012; endpoints 28.5651825,77.0985869 -> 28.5658648,77.0978097
+# chart match unresolved; OSM way 1429481013; endpoints 28.565646,77.0980538 -> 28.5659546,77.0974181
+# chart match unresolved; OSM way 1429438378; endpoints 28.5679401,77.1080495 -> 28.5641321,77.1069796
+# chart match unresolved; OSM way 1429441154; endpoints 28.5679401,77.1080495 -> 28.5685466,77.1082289
+# chart match unresolved; OSM way 1429449876; endpoints 28.5700838,77.108703 -> 28.5704867,77.1089895
+# chart match unresolved; OSM way 1429449877; endpoints 28.5700682,77.1096619 -> 28.5704336,77.1090268
+# chart match unresolved; OSM way 1429449881; endpoints 28.5730149,77.1114801 -> 28.5729432,77.1072391
+# chart match unresolved; OSM way 1429449878; endpoints 28.5722781,77.1077104 -> 28.573143,77.1070942
+# chart match unresolved; OSM way 1429449880; endpoints 28.5721724,77.1077848 -> 28.5723065,77.1077612
+# chart match unresolved; OSM way 1429449882; endpoints 28.5723065,77.1077612 -> 28.5727681,77.1081066
+# chart match unresolved; OSM way 1429449890; endpoints 28.573143,77.1070942 -> 28.5742036,77.1063379
+# chart match unresolved; OSM way 1429438345; endpoints 28.5668885,77.1140949 -> 28.56711,77.113926
+# chart match unresolved; OSM way 1429438346; endpoints 28.56711,77.113926 -> 28.567222,77.1141855
+# chart match unresolved; OSM way 1429438347; endpoints 28.5670244,77.1143202 -> 28.567222,77.1141855
+# chart match unresolved; OSM way 1429438348; endpoints 28.5668885,77.1140949 -> 28.5670244,77.1143202
+# chart match unresolved; OSM way 1429438351; endpoints 28.5666682,77.1142256 -> 28.5668885,77.1140949
+# chart match unresolved; OSM way 1429438352; endpoints 28.5668885,77.1140949 -> 28.5667549,77.1138275
+# chart match unresolved; OSM way 1429438353; endpoints 28.5665163,77.1139903 -> 28.5667549,77.1138275
+# chart match unresolved; OSM way 1429438354; endpoints 28.5665163,77.1139903 -> 28.5666682,77.1142256
+# chart match unresolved; OSM way 1429438367; endpoints 28.5643887,77.1131384 -> 28.5641438,77.1133191
+# chart match unresolved; OSM way 1429438368; endpoints 28.5640258,77.1130553 -> 28.5641438,77.1133191
+# chart match unresolved; OSM way 1429438371; endpoints 28.5639385,77.1134653 -> 28.5641438,77.1133191
+# chart match unresolved; OSM way 1429438373; endpoints 28.5641438,77.1133191 -> 28.5642967,77.1135606
+# chart match unresolved; OSM way 1429438374; endpoints 28.5642967,77.1135606 -> 28.5644824,77.1134093
+# chart match unresolved; OSM way 1429438375; endpoints 28.5643772,77.1131784 -> 28.5644824,77.1134093
+# chart match unresolved; OSM way 1429438399; endpoints 28.5655602,77.1101791 -> 28.5657526,77.1100224
+# chart match unresolved; OSM way 1429438400; endpoints 28.5657526,77.1100224 -> 28.5658642,77.1102652
+# chart match unresolved; OSM way 1429438401; endpoints 28.5656656,77.110417 -> 28.5658642,77.1102652
+# chart match unresolved; OSM way 1429438402; endpoints 28.5655602,77.1101791 -> 28.5656656,77.110417
+# chart match unresolved; OSM way 1429441166; endpoints 28.5685136,77.109693 -> 28.5689992,77.1100437
+# chart match unresolved; OSM way 1527516613; endpoints 28.5686035,77.1103287 -> 28.5684957,77.1105409
+# chart match unresolved; OSM way 1527516614; endpoints 28.5684378,77.1104506 -> 28.5684995,77.1103202
+# chart match unresolved; OSM way 1429441129; endpoints 28.568137,77.118432 -> 28.5683111,77.118615
+# chart match unresolved; OSM way 1429441130; endpoints 28.568137,77.118432 -> 28.5683191,77.118248
+# chart match unresolved; OSM way 1429441143; endpoints 28.5699206,77.1163024 -> 28.5702134,77.1162904
+# chart match unresolved; OSM way 1429475954; endpoints 28.567972,77.1184332 -> 28.568137,77.118432
+# chart match unresolved; OSM way 1527530874; endpoints 28.5705415,77.1160026 -> 28.570613,77.1159794
+
+# UNMATCHED — 46 holding-position nodes. Chart label/runway category not verified against the node.
+# chart match unresolved; OSM node 1919917683; 28.5476522,77.0746501
+# chart match unresolved; OSM node 8373361345; 28.5398875,77.1111328
+# chart match unresolved; OSM node 8373361403; 28.5417918,77.1118117
+# chart match unresolved; OSM node 8373361409; 28.5422546,77.1096236
+# chart match unresolved; OSM node 8628220315; 28.5670089,77.0902958
+# chart match unresolved; OSM node 8628220316; 28.5648194,77.0907954
+# chart match unresolved; OSM node 8628229767; 28.5389197,77.1086403
+# chart match unresolved; OSM node 8628229768; 28.538707,77.1096156
+# chart match unresolved; OSM node 8628229769; 28.538503,77.1105756
+# chart match unresolved; OSM node 8628251621; 28.5684203,77.0864339
+# chart match unresolved; OSM node 8628251622; 28.5696928,77.0876694
+# chart match unresolved; OSM node 8628251623; 28.5696629,77.0897226
+# chart match unresolved; OSM node 8628251624; 28.5713123,77.0935419
+# chart match unresolved; OSM node 8628251629; 28.5397724,77.104649
+# chart match unresolved; OSM node 8628304243; 28.5475238,77.0686264
+# chart match unresolved; OSM node 8628304244; 28.5477194,77.0676525
+# chart match unresolved; OSM node 8628304245; 28.5481029,77.065893
+# chart match unresolved; OSM node 8628304246; 28.5483009,77.0649192
+# chart match unresolved; OSM node 8628334179; 28.5412027,77.1050515
+# chart match unresolved; OSM node 10976052568; 28.5420556,77.1105997
+# chart match unresolved; OSM node 10980102454; 28.5697127,77.0887176
+# chart match unresolved; OSM node 13140341192; 28.5605887,77.1181464
+# chart match unresolved; OSM node 13140341196; 28.5610281,77.1162204
+# chart match unresolved; OSM node 13140341221; 28.5607867,77.1172295
+# chart match unresolved; OSM node 13140363725; 28.5688917,77.1174787
+# chart match unresolved; OSM node 13140363750; 28.5688524,77.1164555
+# chart match unresolved; OSM node 13140363981; 28.569178,77.1099162
+# chart match unresolved; OSM node 13140431430; 28.5709936,77.1086279
+# chart match unresolved; OSM node 13140529686; 28.5576186,77.1221546
+# chart match unresolved; OSM node 13140673277; 28.5694668,77.0978488
+# chart match unresolved; OSM node 13140716858; 28.5657648,77.0959404
+# chart match unresolved; OSM node 13909753237; 28.5510747,77.0685762
+# chart match unresolved; OSM node 13909753239; 28.5508663,77.0695434
+# chart match unresolved; OSM node 13909753240; 28.550303,77.0721515
+# chart match unresolved; OSM node 13912102129; 28.5586917,77.1175894
+# chart match unresolved; OSM node 13974376184; 28.5483548,77.0716181
+# chart match unresolved; OSM node 13974376185; 28.5489261,77.06901
+# chart match unresolved; OSM node 13974376186; 28.5491245,77.0680376
+# chart match unresolved; OSM node 13979923126; 28.540129,77.1100413
+# chart match unresolved; OSM node 13979923127; 28.5403391,77.1090719
+# chart match unresolved; OSM node 13979923129; 28.5451148,77.0867892
+# chart match unresolved; OSM node 13979923130; 28.5470609,77.0873235
+# chart match unresolved; OSM node 13979923132; 28.5495554,77.075702
+# chart match unresolved; OSM node 13979930713; 28.5581515,77.1197201
+# chart match unresolved; OSM node 13979930728; 28.5660393,77.0855848
+# chart match unresolved; OSM node 13979930740; 28.5663977,77.0839105

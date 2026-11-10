@@ -138,6 +138,9 @@ impl World {
     ///   pilot: the same, with IGO713's pilot going around 2 km out
     ///   threshold: IGO512 lined up on 29L; IGO713 2 km out on final for
     ///     29L, not cleared (C lands it over IGO512: R5)
+    ///   lsa: LVP on; IGO713 landed on 29L and held at Z2, inside the 29L
+    ///     localizer sensitive area; IGO714 on final for 29L, not cleared
+    ///     (PLAN-lvp.md step 8)
     pub fn scenario(seed: u64, name: &str) -> Option<World> {
         let mut w = World::new(seed);
         if name == "arrival" || name == "pilot" {
@@ -174,6 +177,17 @@ impl World {
                     w.step_ticks(1);
                 }
                 w.add_lined_up("IGO512", Wake::M, e).ok()?;
+            }
+            "lsa" => {
+                w.set_lvp(true);
+                let a = w.spawn_arrival("IGO713", Wake::M, "29L")?;
+                w.aircraft[a].pilot_ga = None;
+                w.clear_to_land(a).ok()?;
+                while w.aircraft[a].phase != Phase::Holding {
+                    w.step_ticks(1);
+                }
+                let b = w.spawn_arrival("IGO714", Wake::M, "29L")?;
+                w.aircraft[b].pilot_ga = None;
             }
             "runway" => {
                 let e = entry(&w, "29R", true)?;

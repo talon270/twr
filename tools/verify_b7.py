@@ -95,7 +95,9 @@ with sync_playwright() as pw:
     pg.evaluate("document.getElementById('theme').click()"); frame(pg)
 
     # Esc closes, the world stays stopped; keys do nothing while it is open.
-    pg.keyboard.press("Escape"); frame(pg)
+    # PLAN-ui-console step 4: the review fades out over 215 ms and keeps
+    # display:block until then; check once the exit has finished.
+    pg.keyboard.press("Escape"); frame(pg); pg.wait_for_timeout(300)
     check(not pg.is_visible("#result") and app(pg, "a.over()"), "Esc closes the dialog; the shift stays over")
     app(pg, "a.fast_forward(500)"); frame(pg)
     check(app(pg, "a.ticks()") == tick_end, "nothing moves after the end")

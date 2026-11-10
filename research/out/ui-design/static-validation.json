@@ -1,0 +1,123 @@
+{
+  "kind": "static validation, not a browser run",
+  "date": "2026-11-10",
+  "files": {
+    "a": {
+      "sha256": "b153cfa66a9b8cd4216fa4e63052685ad6f83572a87b04ad0c383f63a234f0fd",
+      "javascript_syntax": "PASS",
+      "forbidden_patterns": [],
+      "themes": {
+        "light": {
+          "ratios": {
+            "ink/surface": 17.5554,
+            "muted/surface": 7.0649,
+            "muted/soft": 5.8114,
+            "muted/map": 6.1914,
+            "ink/tint": 13.2007,
+            "red/redsoft": 5.8968,
+            "dialogink/dialog": 17.154,
+            "dialogmuted/dialog": 6.9854,
+            "control/surface": 4.7165,
+            "taxi/map": 3.787,
+            "taxi/apron": 3.1578
+          },
+          "popup_vs_white_under_86pct_black": 15.5812
+        },
+        "dark": {
+          "ratios": {
+            "ink/surface": 16.5599,
+            "muted/surface": 9.3124,
+            "muted/soft": 8.0308,
+            "muted/map": 9.5464,
+            "ink/tint": 10.9383,
+            "red/redsoft": 6.7358,
+            "dialogink/dialog": 5.1429,
+            "dialogmuted/dialog": 4.641,
+            "control/surface": 6.0401,
+            "taxi/map": 6.5307,
+            "taxi/apron": 5.2142
+          },
+          "popup_vs_white_under_86pct_black": 3.0297
+        }
+      }
+    },
+    "b": {
+      "sha256": "308de8338e2f382c745d24290247414f9138d9dff4127555ba920a2304965857",
+      "javascript_syntax": "PASS",
+      "forbidden_patterns": [],
+      "themes": {
+        "light": {
+          "ratios": {
+            "ink/surface": 14.0725,
+            "muted/surface": 6.1059,
+            "muted/soft": 4.8158,
+            "muted/map": 5.5031,
+            "ink/tint": 11.3462,
+            "red/redsoft": 6.374,
+            "dialogink/dialog": 17.154,
+            "dialogmuted/dialog": 6.9854,
+            "control/surface": 4.5562,
+            "taxi/map": 3.6305,
+            "taxi/apron": 3.0675
+          },
+          "popup_vs_white_under_86pct_black": 15.5812
+        },
+        "dark": {
+          "ratios": {
+            "ink/surface": 13.5588,
+            "muted/surface": 8.553,
+            "muted/soft": 7.2323,
+            "muted/map": 9.1392,
+            "ink/tint": 8.3668,
+            "red/redsoft": 6.5844,
+            "dialogink/dialog": 5.3166,
+            "dialogmuted/dialog": 4.7978,
+            "control/surface": 5.344,
+            "taxi/map": 6.2632,
+            "taxi/apron": 4.5456
+          },
+          "popup_vs_white_under_86pct_black": 2.9306
+        }
+      }
+    },
+    "c": {
+      "sha256": "726fc22ea022e3a1ea5fd74ebef408059cf564d9b4cdfe7f1733aa54561bb26d",
+      "javascript_syntax": "PASS",
+      "forbidden_patterns": [],
+      "themes": {
+        "light": {
+          "ratios": {
+            "ink/surface": 12.4556,
+            "muted/surface": 5.7573,
+            "muted/soft": 4.749,
+            "muted/map": 5.3774,
+            "ink/tint": 9.6718,
+            "red/redsoft": 5.9744,
+            "dialogink/dialog": 17.154,
+            "dialogmuted/dialog": 6.9854,
+            "control/surface": 4.1047,
+            "taxi/map": 3.5758,
+            "taxi/apron": 3.0217
+          },
+          "popup_vs_white_under_86pct_black": 15.5812
+        },
+        "dark": {
+          "ratios": {
+            "ink/surface": 13.5715,
+            "muted/surface": 8.381,
+            "muted/soft": 7.1422,
+            "muted/map": 8.6892,
+            "ink/tint": 8.2188,
+            "red/redsoft": 6.7964,
+            "dialogink/dialog": 5.46,
+            "dialogmuted/dialog": 4.9272,
+            "control/surface": 6.3001,
+            "taxi/map": 6.2517,
+            "taxi/apron": 4.7261
+          },
+          "popup_vs_white_under_86pct_black": 2.8537
+        }
+      }
+    }
+  }
+}

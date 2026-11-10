@@ -55,6 +55,11 @@ pub enum GoAround {
     Instructed,
     /// No landing clearance by the decision point.
     NoClearance,
+    /// No landing clearance by 2 NM under LVP because the localizer
+    /// sensitive area was occupied (PLAN-lvp.md § A3). Withholding C was
+    /// the rule, so it is neither delay you caused nor a challenge; the
+    /// lost movement still shows in the score.
+    LsaOccupied,
 }
 
 impl GoAround {
@@ -70,6 +75,7 @@ impl GoAround {
             GoAround::Weather(r) => format!("weather: {r}"),
             GoAround::Instructed => "instructed".into(),
             GoAround::NoClearance => "no landing clearance".into(),
+            GoAround::LsaOccupied => "LSA occupied".into(),
         }
     }
 }

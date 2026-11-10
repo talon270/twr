@@ -64,7 +64,9 @@ fn ground_nose_to_tail() {
 
     until(&mut w, 100_000, |w| !w.monitor.conflicts.is_empty());
     let d = w.monitor.conflicts[0].d_m;
-    assert!(d < GROUND_WARN_M as f64 && d > GROUND_WARN_M as f64 - 1.0, "first conflict at {d} m");
+    // The first reading under 300 m lies within one step of it; 299.0 is
+    // that step's lower edge (seen with B10's 270 stands, which split the route).
+    assert!(d < GROUND_WARN_M as f64 && d >= GROUND_WARN_M as f64 - 1.0, "first conflict at {d:.4} m");
     assert!(w.monitor.incidents.is_empty());
 
     until(&mut w, 100_000, |w| lead_mdm - w.aircraft[b].pos_mdm <= 46 * MDM_PER_M);
@@ -173,7 +175,9 @@ fn ground_converging_and_one_already_past() {
 #[test]
 fn ground_pushback_into_a_passer() {
     let w0 = empty();
-    let r = taxi_route(&w0, 900.0).unwrap();
+    // B10: chart stands link 60-134 m out (median 79), so the junction must
+    // lie more than 10 link-lengths along: a 2 km route, not 900 m.
+    let r = taxi_route(&w0, 2_000.0).unwrap();
     // A stand whose junction lies on r at least 300 m along.
     let mut pick = None;
     for s in &w0.airport.stands {

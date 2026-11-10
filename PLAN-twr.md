@@ -1435,3 +1435,653 @@ happen in 600 frames, so the moving state also times the incident path.
 - The strip tooltip is written only when it changes, not every frame.
 
 **`README.md` is written** (sections 1–6, with the assumed-vs-solid table).
+
+---
+
+## B10 — the real airport, and aircraft that look like aircraft (1.0.1)
+
+Written 2026-11-07, against 1.0 as committed (`87f15ba`). Your report: T1
+has a new layout, the T2 and T3 stands are not built, and aircraft are
+triangles. Method: counted every aeroway element in `data/vidp.osm.json`
+by the nearest terminal; read what `crates/osm` keeps (`stand_ids`, the
+`.twr` line kinds) and what `crates/web` draws (`draw`, the triangle at
+`lib.rs:1019`); read the `aircraft` research's `geometry/` outlines;
+searched for the eAIP's VIDP apron charts and probed AAI's site (it
+answers). **Nothing below is implemented — this is the plan.**
+
+### Findings
+
+#### M1 · BUG (high): T3 has no stands at all, and T2 has 12
+
+`crates/osm/src/main.rs:281` keeps only `parking_position` **nodes** as
+stands. OSM maps T3 differently: 40 `aeroway=gate` nodes (refs like 53–58,
+at the building's edge) and 4 stand-centreline ways, with 0
+`parking_position` nodes. So T3 gets 0 stands in the game and T2 gets 12.
+Of the 115 stands in the game, 91 are at T1 and 12 are at the cargo apron.
+Every departure therefore spawns at T1 or cargo, and Air India and every
+foreign carrier operate from T1. That is wrong: they fly from T3.
+
+**Fix:** the stands come from the official chart, not from OSM (M2), and
+their names stay as the eAIP prints them.
+
+#### M2 · DESIGN RISK (high): OSM cannot tell us whether T1 matches the new layout
+
+OSM's T1 outline is a new way (`1429256812`), so someone has redrawn the
+building. Whether its 91 stands and their taxilanes are the new layout or
+the old one cannot be checked from OSM alone, and I have no imagery.
+
+**Fix:** use the eAIP. AAI publishes VIDP's aircraft parking and docking
+charts (AD 2.24), and they list each stand with a WGS 84 coordinate. A
+2023 copy shows the format: `201 28°33'35.05"N 077°05'12.10"E`. A December
+2025 NOTAM amends the Apron II chart, so the chart is maintained. Steps:
+
+1. Fetch the current AIRAC's VIDP AD 2.24 charts from aim-india.aai.aero
+   and keep the PDFs in `research/sources/vidp/` (git-ignored).
+2. Transcribe every stand into `data/vidp.stands.csv` with these columns:
+   `stand, lat, lon, apron, terminal, max_code_letter, chart, airac`. A
+   script parses the coordinate tables; I check them by hand against the
+   chart.
+3. The extractor takes stands from that file, not from OSM. It links each
+   one to the nearest taxilane, as it does now.
+4. **Measure the taxilane fit.** Report every eAIP stand more than 60 m
+   from any OSM taxilane. Many misses around T1 would mean OSM's taxilanes
+   there are also old. The fix is then new taxilane segments in
+   `data/vidp.overrides.toml`, traced from the same chart's lead-in lines.
+   This step's size is unknown until the measurement; it is reported
+   before any segment is drawn.
+
+**If the AAI site refuses the fetch or the charts carry no coordinate
+table:** I stop and say so. I do not fall back to guessing stand positions.
+
+#### M3 · DESIGN RISK (medium): aprons and terminals are in the data but never drawn
+
+The raw extract holds 45 apron polygons and 10 terminal outlines: T1,
+three for T3, two unnamed near T2, and four freight. `fetch-osm.sh` keeps
+them "so the map can draw them later". The `.twr` format has no line kind
+for polygons, so nothing draws them, and the map reads as bare lines.
+
+**Fix:** a `p` line kind in `.twr` (kind, then a ring of points), written by
+the extractor and parsed by `airport.rs`. The renderer fills each apron with
+a light tone and each terminal with a darker one, under the taxiways, in
+both themes. Terminals get their names as labels. The route graph is not
+touched.
+
+#### A1 · MODEL GAP (medium): every aircraft is a triangle
+
+`lib.rs:1019` draws a triangle along the direction of travel, the same
+size for an ATR and an A380.
+
+**Fix:** a top-down silhouette at true scale, turned to the heading.
+
+| Type group | Shape | Grade |
+|---|---|---|
+| A20N, A21N, A321 (~63% of movements) | traced outlines from `research/out/aircraft/geometry/` (Airbus sheets, span within 1.1%) | primary |
+| A320, A319, B38M, B738, B737, B739, E190 | the A20N outline stretched to each type's length and span (`types.csv`) | derived; a 737's nose and tail differ, so the shape is approximate |
+| widebodies (B788, B789, B77W, A359, A333 …) | trace the 777-300ER from Boeing's vector sheet (the research found its dimension lines leak into the fill; hand-set exclusion boxes fix that), then stretch it per type | primary for B77W, derived for the rest |
+| AT76, DH8D | an `authored` straight-wing turboprop outline, stretched per type | authored; the README says so |
+| A388 | the 777 outline stretched to 79.75 × 72.7 m | derived; it lacks the A380's double deck, which top-down does not show anyway |
+
+**Zoomed out, a 36 m aircraft is 2–3 pixels.** Below a floor of 14 px of
+wingspan, the silhouette is drawn at 14 px with a thin outline, so it
+reads as a shape at every zoom. Above the floor it is true scale. The
+selected aircraft keeps its highlight, and conflicts keep their red.
+
+#### A2 · BUG (medium, made visible by A1): any aircraft can park on any stand
+
+`traffic.rs` picks a random free stand for a departure, whatever its size.
+With true-scale shapes, a 777 on an ATR stand would overlap its
+neighbours on screen. The eAIP's `max_code_letter` per stand fixes it. A
+departure spawns only on a stand that fits its letter (`types.csv`
+`icao_code_letter`), and an arrival's taxi to a stand too small is refused
+inline: "stand 134L takes code C; B77W is E". This needs M2's file, so it
+is built after it.
+
+### Added 2026-11-07, at your request (approval pending)
+
+#### C1 · Strip bays: the list splits by what each aircraft needs from you
+
+Today `#bay` is one list, in order of appearance. It becomes stacked bays,
+each with a header and a count. A strip moves bay by itself when its phase
+changes; no drag needed.
+
+| Bay | Phases |
+|---|---|
+| **Pushback** | `OnStand` departures, `Pushback` |
+| **Ground** | `Holding`, `Taxi`, `HoldPosition`, `HoldShort`, crossing; arrivals once vacated |
+| **Runway** | `LineUp`, `LinedUp`, `TakeoffRoll` (see question 4) |
+| **Landings** | `Final`, `Landing`, `GoAround` |
+
+Inside a bay, the strip that needs you soonest goes first: on final, by
+distance to the threshold; on the ground, by time waited. Departed and
+shut-down strips leave, as in B6. Every bay collapses with a click on its
+header; a collapsed bay still shows its count.
+
+#### C2 · Tail direction on pushback
+
+`Aircraft::push` (`aircraft.rs:470`) reverses down the stand link and stops
+at the junction, so its heading there is whatever the link gives. Real
+push clearances name the tail: "push back, tail west".
+
+**Fix:** P on a stand shows the push's possible ends at its junction: one
+arrow per taxilane branch, labelled by compass (`tail W`, `tail E`). Click
+one, or press ← / → to cycle and Enter to send. The push runs down the link
+and on along the chosen branch for one aircraft length (the type's
+`length_m`), and ends facing the other way. A branch with no room (another
+aircraft within the length) is refused inline. P, then Enter at once,
+takes the first branch, so a fast push stays one key away. The taxi that
+follows already refuses a U-turn, so the tail direction decides which way
+the aircraft can leave.
+
+#### C3 · More control on the ground
+
+What exists: P, T with a click-built route (vias, avoids), H to hold, X to
+cross, L to line up. Which of these to add is open question 5. Each is
+small on its own:
+
+| Verb | Does |
+|---|---|
+| **Hold short of a point** | while taxiing, click a node ahead: the aircraft stops there and waits for T or a continue key |
+| **Continue** (`Enter` on a held aircraft) | resume the cleared route after H or a hold-short point |
+| **Reroute mid-taxi** | T on a moving aircraft: plan from the next node, the new preview shown before it applies |
+| **Give way** | "give way to IGO512": waits until that aircraft has passed the next junction, then continues |
+| **Taxi speed** | slow (5 m/s) / normal (10 m/s) / expedite (15 m/s, `authored`) |
+| **Cross without stopping** | X given ahead of the hold: no stop at that runway if it is clear on arrival; the R3 check still applies |
+| **Backtrack** | taxi along a runway to its end and turn there (Delhi's 09/27 needs it from some entries) |
+
+#### C4 · Choose the runways in use
+
+The wind panel (B9) gets a runway picker: each runway end in the wind's
+direction, with **Land** and **Depart** toggles. A runway can be both
+(mixed mode). New movements are assigned from what you picked; aircraft
+already assigned keep their runway, and you reassign one by its strip.
+
+**Rules:**
+- **One direction at a time.** All active ends face west (27/28/29) or all
+  face east (09/10/11). The conflict model does not link opposite
+  directions (`conflict.rs::wake_links`), so a mix would be unchecked.
+  Switching direction is allowed. Everything already assigned keeps its
+  runway, and new movements wait until the old direction's runways are
+  clear. See open question 6.
+- **Tailwind:** an end with more than 10 kt of tailwind is refused inline
+  (a typical certified limit, from memory, unconfirmed); 5–10 kt is
+  allowed with a warning. The wind's own pick (B9) is the default each
+  shift.
+- **Heavies still need 3,100 m.** If no departure runway you picked is long
+  enough, heavies wait on stand, and the panel says so.
+- Delay (B7) does not count waits caused by your runway choice as yours
+  unless the aircraft is waiting for a clearance you could give. The rules
+  in B7 already say this.
+
+### Proof
+
+| Check | How |
+|---|---|
+| C1 | Playwright: one aircraft walked from stand to airborne passes through Pushback, Ground and Runway, in order; an arrival through Landings then Ground; counts in each header match the hooks |
+| C2 | sim tests: a push with each branch ends one length along it, facing away; a blocked branch is refused; Playwright: ← → Enter pushes tail east, then a taxi west is accepted and a taxi east refused as a U-turn |
+| C3 | one sim test per verb chosen, at its boundary; Playwright drives each by keys and clicks |
+| C4 | sim tests: east and west ends never active together; a tailwind over 10 kt is refused; a heavy waits when no long runway departs; Peak long run with a non-default pick, 0 incidents |
+| M1/M2 | every stand in `vidp.stands.csv` appears in the game with its eAIP name; counts per terminal printed and checked against the charts; T3 and T2 have stands; T1's match the current chart |
+| taxilane fit | a test asserts every stand links within 60 m, after any overrides |
+| M3 | Playwright screenshots of T1, T2/T3 and cargo in both themes; the apron fill reaches at least 1.3:1 against the background and the taxiway lines keep 3:1 |
+| A1 | a sim test: every type in `TYPES` has a shape; drawn span within 2% of `types.csv`; Playwright: a selected A20N on stand, zoomed in, measures 35.8 m ±2% on screen |
+| A2 | 10,000 departure spawns: no stand gets a type over its letter; a taxi to a stand that is too small is refused inline; B6–B9 long runs stay at 0 incidents |
+| regression | the whole workspace, `verify_b2`–`verify_b9`, `perf_80.py` (silhouettes cost more than triangles: quote the median) |
+
+### Out of scope
+
+- **Satellite or aerial imagery as a backdrop.** That is a licensing
+  question, and the game ships offline in one file.
+- **3D aircraft or a 3D view.** See open question 1.
+- **Changing OSM itself.** If the taxilanes are stale, the fix lives in
+  our overrides file. Updating OSM upstream is yours to do if you want to.
+- BLR and BOM, LVP, per-type speeds (1.1, unchanged).
+
+### Answered 2026-11-07
+
+1. Models: **2D top-down silhouettes**. 2. Stand source: **fetch the eAIP in
+this session**. 3. T2: **follow the eAIP**. M1–A2 **approved**.
+
+### Measured 2026-11-07, after approval: the eAIP charts
+
+Fetched from eAIP India, amendment effective 29-10-2026: the aerodrome chart
+and the 15 Parking/Docking charts (`research/sources/vidp/`, git-ignored).
+`research/work/vidp/stands_from_charts.py` reads every chart's stand table
+(stand, WGS 84 position, code letter) into `data/vidp.stands.csv`: **270
+stands, every coordinate row on every chart matched.** Skipped: the three
+general aviation charts (they print no coordinates, and GA is not airline
+traffic) and the special stands 800–803.
+
+| Apron (chart) | Stands | Chart updated | OSM stand of the same name |
+|---|---|---|---|
+| Apron I, T1 (101–137, 140–178) | 82 | 13 Feb 2025 | **all 82, median 2–3 m off, max 5 m** |
+| Apron II | 45 | 15 Jan 2026 | none |
+| Aprons 31–35, T3 | 131 | 13 Feb 2025 | none |
+| Cargo | 12 | 13 Feb 2025 | all 12, median 10 m off |
+
+**M2 is answered: the game's T1 stands are the published layout.** The
+chart was updated 13 Feb 2025 and is still current. If T1 changed after
+that, the official chart does not show it yet either. What looks wrong at
+T1 is likely M3: no building and no apron are drawn.
+
+**M1 is bigger than counted.** Apron II and all of T3 (176 stands) are
+missing from OSM's stand nodes, not just thinner.
+
+**The plan's 60 m fit test was wrong.** Every chart stand sits 60–134 m
+from the nearest OSM taxi line, including T1's, which match exactly. The
+chart's point is the stand near the building; the apron taxilane runs one
+aircraft length out. The check becomes: every stand links to a taxilane
+with a link that crosses no terminal and no other stand's link, and the
+longest link is printed per apron.
+
+**C1–C4 approved 2026-11-07:** four bays; every C3 verb (hold short and
+continue, reroute mid-taxi, give way and speed, cross early and
+backtrack); runways one direction at a time.
+
+**Build order** (riskiest first, each slice run before the next): M2/M1
+stands from the eAIP · M3 aprons and terminals · A2 stand fit · A1
+silhouettes · C1 bays · C2 tail direction · C4 runway picker · C3 verbs.
+
+### Earlier open questions (answered above)
+
+1. "Airplane models": top-down silhouettes at true scale on the 2D map
+   (this plan), or a 3D view? The two are different builds.
+2. The stand source is the eAIP, fetched in this session. The `vidp`
+   research run was meant to do this, and its logs are empty. Do it here,
+   or wait for that run?
+3. T2: OSM shows aprons and 12 stands there. Is T2 open in your picture of
+   the airport, or closed? The eAIP will say what is published; you may
+   know something the chart does not.
+
+### Built 2026-11-07: M3 aprons and terminals
+
+**`p` lines carry 55 outlines: 45 aprons and 10 terminals.** The extractor
+writes them after the network, in way-id order. Re-extracting changed
+nothing else in `vidp.twr`: the diff against the pre-M3 file is only the
+added `p` lines. The area block first landed inside the error branch, after
+its `return`, so it never ran. It now runs after the error check.
+
+| Token | Light | Dark | Against |
+|---|---|---|---|
+| `--apron` | `#dddde0`, 1.36:1 | `#232327`, 1.34:1 | `--bg` |
+| `--term` | `#bfc0c5`, 1.34:1 | `#3c3c41`, 1.43:1 | `--apron` |
+| `--dim` taxi lines | 5.12:1 / 3.82:1 | 4.55:1 / 3.19:1 | apron / terminal |
+
+**Labels sit on the inside point farthest from the outline**
+(`Area::label_point`, a 24 × 24 grid search, cached at load). The vertex
+mean put "Terminal 3 (International)" on the apron, beside its V-shaped
+pier; `area_label_sits_inside_a_v_shape` holds that case. A name is drawn
+only when the building spans 120 px or more. Two unnamed outlines near T2
+stay unlabelled: OSM gives them no name, and the game does not invent one.
+
+**COSMETIC (low), left as is:** in light theme the terminal fill and the
+runway stroke (`--line` `#c4c6c8`) are nearly the same grey. A darker
+terminal would drop `--dim` on it below 3:1. The runway's dashed
+centreline tells them apart.
+
+**Proof.** `cargo test --release --workspace`: 87 passed, 0 failed.
+`verify_b2`–`verify_b9`: 29, 16, 35, 40, 34, 22, 21 PASS, 0 FAIL.
+Screenshots of T1, T3 and Apron II in both themes at 1920 × 1080, 0 page
+errors. Perf, an A/B of the same build with the `p` lines stripped, at
+1920 × 1080 with 42 moving: medians of 4.75 and 3.40 ms without areas,
+7.90 and 4.10 ms with them. The spread between two runs of one build is as
+wide as the gap between builds, so the fill cost is not separable from
+noise. Every median stays under 8.35 ms, half the frame budget.
+
+### Built 2026-11-07: A2 stand fit
+
+**Every type in `TYPES` carries its code letter** from `types.csv`
+(`icao_code_letter`). `stand_fits(stand, type)` passes when the type's letter
+is at or below the stand's. A stand with no letter (`-`, OSM's) and a type
+not in `TYPES` both pass: there is nothing to check, and refusing would
+invent a limit.
+
+**Departures spawn only on a stand that fits.** The queue is walked in
+order, but a heavy with no E or F stand free waits without holding up the
+A20N behind it. IGI has 47 stands of code E or F and 223 below; a FIFO head
+would stall the whole queue behind one A388.
+
+**A taxi to a stand too small is refused inline,** on the same notice path
+as "occupied by": `stand D43 takes code C; A333 is E`.
+
+**The long-run autopilot hit that refusal at once.** It sent vacated
+arrivals to any free stand. Its stand pick now skips stands that do not fit;
+the refusal it hit is the bug A2 exists to stop.
+
+**Proof.** `ten_thousand_spawns_never_overfill_a_stand`: 10,030 placed,
+2,303 on E/F stands, none over its letter. With the fit check disabled in
+the spawn, the same test fails on `TST6 (B788) on stand 232 code C`.
+`a_heavy_with_no_stand_does_not_block_the_queue`,
+`letters_order_and_unknowns_pass`, and `stand_too_small_is_refused` (B77W
+refused on a C stand with the exact message; A20N accepted on it).
+`cargo test --release --workspace --no-fail-fast`: 90 passed, 0 failed, the
+B4, B6 and B9 long runs included. `verify_b2`–`verify_b9`: 29, 22, 35, 40,
+34, 22, 21 PASS, 0 FAIL.
+
+### Built 2026-11-07: A1 silhouettes
+
+**Every aircraft is a true-scale outline, turned to its heading.** `crates/sim/src/shape.rs` holds five base outlines and stretches one to each of the 24 types in `TYPES` by `types.csv` length and span. The aircraft's position is its nose gear, so a stand's point sits where the nose wheel parks.
+
+| Base | Used for | Grade |
+|---|---|---|
+| A20N, A21N, A321 | themselves; the A20N also stands in for every other code C jet | traced (Airbus sheets) |
+| B77W | itself and every code E and F type | traced, span +1.08% against the sheet |
+| turboprop | AT76, AT46, DH8D | `authored`, drawn by hand to ATR 72 proportions; its nose-gear x (3.0 m) is a guess |
+
+**The 777 trace needed one idea, not exclusion boxes.** Boeing's sheet draws the airframe as hairline fills and every grid and dimension line as a stroke, so keeping fills only (`fill_only` in `trace.js`) removes them. The plan's hand-set exclusion boxes were not needed. Result: 47 points, length 73.97 m against 73.86, span 65.50 m against 64.80. The old trace had 3 points.
+
+**Below 14 px of wingspan the outline is drawn at 14 px** (`SILHOUETTE_MIN_PX`), so a 36 m aircraft is a shape, not 2 px, at full zoom-out. The selection ring, conflict rings and label scale with the drawn shape.
+
+**Hit slop is 22 px beyond the drawn shape**, not beyond a point. My first A1 build measured from the shape's middle and missed 40 of 80 clicks 15 px off the position point; the regression run caught it as 52 `verify_b2` failures. Fixed with a distance-to-polygon test; the same 80 clicks now give 0 misses, and `verify_a1.py` keeps the check.
+
+**Proof.**
+- `shape` tests: every `TYPES` row has a shape and its span and length are within 2% of `types.csv`. This proves coverage and the stretch, not trace accuracy: stretching sets the span exactly.
+- `verify_a1.py`, 8 PASS: an A20N on stand, zoomed in with the wheel, measures 35.80 m by 37.57 m; an A359 64.76 m (published 64.75); the narrowest aircraft at the fitted zoom is 14.00 px; a click on the tail 65 px from the position point selects it.
+- Screenshots in both themes: nose-in, body along the stand link.
+- **Not checked by eye:** an airborne aircraft (drawn as an outline, not filled). **No before/after run** for the silhouettes: the old build has no `aircraft_outline` hook.
+
+### Built 2026-11-07: UX1, five bugs from a test run
+
+| # | Reported | Root cause | Fix |
+|---|---|---|---|
+| 1 | a departed aircraft doesn't clear out | `drawStrips` hid finished strips only `if shift`; Practice kept them "as B2-B5 did" | hidden in every mode |
+| 4 | an arrival on its stand doesn't clear out | the 120 s shut-down ran inside `traffic_tick`, and Practice has no traffic (`World.traffic` is `None`); its `inbound` map also held only arrivals that traffic spawned | `Aircraft.arrival` and `stand_since`; `World::shut_down_arrivals` runs in every world; the map is gone |
+| 2 | no Line up or Takeoff button | keys only | buttons on the selected strip, one per verb it accepts now, pressing the same key; hit 44 px, drawn 28 px |
+| 3 | no push-and-taxi key | P then T, with T refused while pushing | **S**: pushes, and the taxi route builder opens when the push ends |
+| 5 | requests should flash on the card | the game had no notion of a request | `World::requesting`; the card pulses and says what it asks |
+
+**What counts as a request** (your four): a departure on stand past its 60 s grace ("ready to push"), `Holding` ("requests taxi"), `LinedUp` with no wake wait or blocker ("ready for takeoff"), `Final` and not cleared ("requests landing clearance"). It shares its conditions with the delay score (`stand_ready`, `lined_up_free`) so the two cannot drift. Narrower than the score on purpose: a hold you ordered with H, a hold short of a runway in use, and a go-around are not requests. The pulse is a 12% ink tint at about 0.8 Hz, not red (red is for conflicts); the words carry the meaning. Under reduced motion the tint stays on and nothing moves.
+
+**Limits, stated where the claim is made:**
+- **Landing clearance flashes from the moment an arrival spawns**, 7–8 km out, about 86 s. That is what the four-way pick says; a distance gate (say, inside 5 km) is one line if it reads as noise.
+- **Practice's IGO512 never flashes.** It has no due time (`ready` is `None`), as the score treats it.
+- **A hold-short at a crossing does not flash**, though X is what it waits for. It was not in your list.
+- **Verb buttons are `tabindex="-1"`.** Enter is the taxi route's send key, and a focused button would press on it too. Keyboard users have the keys.
+- In taxi or exit mode the buttons hide; the hint line says what the clicks mean. There is still no Send or Cancel button.
+
+**Behaviour change that moved a test.** A departed strip no longer updates its text, because it is hidden, so `verify_b3.py` reads `a.strip_state(0)` for "Departed" and asserts the strip is gone. It also presses the new Line up and Takeoff buttons in place of the L and K keys; the L key is still pressed in `verify_b3.py` (the refused case) and `verify_b9.py`, and K in `verify_b4.py` and `verify_b9.py`.
+
+**Proof.**
+- Sim: `an_arrival_shuts_down_on_its_stand_without_a_traffic_stream` failed before the fix (`left: OnStand, right: ShutDown`) and passes; a departure parked in the same world is not shut down. `requesting_marks_what_waits_on_you` covers each phase at its boundary.
+- `verify_ux1.py`, 28 PASS, every action a real click or key: Practice arrival landed, parked and shut down 120 real s later with its strip gone; departed strip gone; S by key and by button, the builder opening only for the selected aircraft; Takeoff by button; flash text and animation in dark and light; reduced motion gives `animation: none` and a tint. **With the old `shift &&` gate restored in a copy of the page, the two strip checks fail (26 PASS, 2 FAIL).**
+- Regression, 2026-11-07: `cargo test --release --workspace --no-fail-fast` **95 passed, 0 failed**. `verify_b3`–`verify_b9`: 17, 35, 40, 34, 22, 21 PASS, 0 FAIL. `verify_b2`: 29, 28, 29 PASS in three runs.
+- **The one `verify_b2` failure is pre-existing.** Seed 2742064590 fails "a right-click avoid produced a different route" every time (3 of 3 on this build): the stand's preview route has no edge whose avoid leaves another route (9 of 25 tried). A pre-A1 renderer built in a scratch copy fails the same way (2 of 2). The check depends on the seed; `verify_b2` draws a fresh one per load. Left as is; it is yours to decide whether the check should pick another stand.
+- Perf, `perf_80.py`, five states: `app.frame` medians 3.2 to 4.9 ms, rAF-gap median 16.7 ms in all, 7 to 22 frames over 20 ms, 0 page errors. The first run of the day read 9.45 ms in one state while other work ran; the clean rerun did not. Silhouettes cost more than triangles; the spread between runs is wider than the gap.
+
+---
+
+## R1 — code review, 27 items, all to be fixed
+
+Written 2026-11-07, against 87f15ba plus the uncommitted B10, A1, A2 and UX1 changes.
+Method: four parallel read-throughs (sim physics, sim world and score, web shell, osm), each CONFIRMED item reproduced in a scratch copy (cargo probes; Playwright on `dist/index.html` with real keys, wheel and clicks). `cargo test --release --workspace --no-fail-fast` 95 passed, 0 failed. `cargo clippy --workspace --all-targets` exit 101. You approved every item for fixing on 2026-11-07.
+**Nothing below is implemented — this is the plan.**
+
+### Findings, ranked
+
+#### R1.1 · BUG (high): a new T route mid-crossing cancels the crossing, and the aircraft parks on the runway
+`aircraft.rs:514-522`: the mid-edge branch of `taxi()` runs `self.cleared.clear()`; `next_hold()` then sets the limit to `max(lim, pos)`, the current position. Cross 10/28 with X, press T inside the runway span: `HoldShort("10/28") on_runway Some(1) speed 0`, still there after 400 ticks. The strip says "holding short" while the aircraft sits on the runway. CONFIRMED.
+**Fix:** after the route is rebuilt, keep as cleared each crossing whose hold line is behind the aircraft (`lim < pos_mdm`). It is the rule `next_hold` already applies, so it adds no new concept.
+
+#### R1.2 · BUG (medium): a stand reads free while its aircraft pushes back
+`traffic.rs:399` (`stand_free`) and `lib.rs:334` (`World::taxi`) both test `route.end() == stand`. `push()` (`aircraft.rs:486`) makes the route [stand, link node], so from the first pushback tick the stand counts as free. A new departure spawned on node 4305, 0.1 m from the pushing aircraft; clearing its push gave `GROUND · P0 0.1 m from NEW1, min 45`, 1 of the 3 incidents that end Surge. CONFIRMED for the spawn; the `World::taxi` path is the same test, SUSPECTED.
+**Fix:** one helper, `stand_taken(node)`: true if a visible aircraft's route ends there, or starts there while it is in `Pushback` or still on the stand link. Both call sites use it, so the class is fixed once.
+
+#### R1.3 · BUG (medium): queued arrivals always beat a go-around's rejoin
+`lib.rs:234-243` runs the rejoin check before movement; `traffic.rs:412-423` runs the queue after it, so the queue sees every slot first. With one 29L arrival always queued, GA1 waited 20,018 ticks (5.6 real min) ready but held, and was charged 30,000 delay ticks. CONFIRMED with a synthetic queue; a real backlog (late Surge, heavy wake gaps) is SUSPECTED.
+**Fix:** run the rejoin pass before the queue pass, both after movement. Reordering two existing calls is the smallest change.
+
+#### R1.4 · BUG (medium): two aircraft can share one line-up spot with nothing logged
+`conflict.rs:199-201`: `on_ground_net` omits `LinedUp` (and `OnStand`), and `runway()` checks only rolling aircraft. Two aircraft lined up on one 29L entry: 0 incidents, 0 conflicts. CONFIRMED on one node; the real-play path (a second LineUp into the spot) is SUSPECTED.
+**Fix:** add `LinedUp` and `OnStand` to `on_ground_net`. Test first that a normal line-up behind a rolling departure and a parked aircraft on its own stand stay clean.
+
+#### R1.5 · BUG (medium): zoom does nothing while paused
+`web/shell.html:648`, `crates/web/src/lib.rs:186`, `:900`: pause sends `real_ms = 0`, and the zoom spring advances by it. Scroll while paused: 0.1928 stays 0.1928; unpause jumps to 0.2876. CONFIRMED.
+**Fix:** pass the real frame time to the spring and 0 to the sim while paused.
+
+#### R1.6 · BUG (medium): after a seed and Enter, every game key is ignored
+`web/shell.html:632` blurs the Start button, but focus stays in `#seed-in`; the key guard (`:385`) drops keys while an input has focus, and strip pointerdown calls `preventDefault` (`:408`). Type 7, Enter, click a strip, press Esc: still selected; P, T, K dead. CONFIRMED.
+**Fix:** `document.activeElement.blur()` in place of `el("start").blur()`. One line.
+
+#### R1.7 · DESIGN RISK (medium): line-up ignores the assigned runway direction
+`route.rs:230` (`runway_run`), called at `aircraft.rs:399` and `:584`, faces the longer stretch. With 29L active, 6 of 13 entries on 11R/29L face 11R, head-on to arrivals. CONFIRMED by count.
+**Fix:** pass the departure's `assigned` runway end and face it; fall back to the longer stretch only when none is assigned.
+
+#### R1.8 · DESIGN RISK: a second finger hijacks the pan
+`web/shell.html:349-372` stores `press.id` but never compares it. SUSPECTED.
+**Fix:** ignore a second pointerdown; skip moves and releases from any other pointer id.
+
+#### R1.9 · INCONSISTENCY: the `.twr` format changed without a version bump
+`airport.rs:28` keeps `twr-airport 1`, though the stand record gained a required code field and the file gained `p` records (uncommitted); the header at `:23` still documents `s <node> [name]`. An old file fails with "stand code must be A-F or -", not the version error. CONFIRMED by reading.
+**Fix:** bump to `twr-airport 2`, update the header, re-extract `data/vidp.twr`.
+
+#### R1.10 · INCONSISTENCY (low): play can shift the "independent" traffic stream
+`traffic.rs:436`: the schedule's RNG also picks the departure stand, against the claim at `:10-12`. Replay stays deterministic. SUSPECTED.
+**Fix:** a second RNG, seeded from the shift seed, for stand picks only.
+
+#### R1.11 · INCONSISTENCY (low): README numbers are stale
+`README.md:22` says 86 tests (95 now); `:5` says 115 stands (`vidp.twr` has 270). CONFIRMED by count.
+**Fix:** update both, and the 7-minute test time after the final run.
+
+### Low items
+
+| # | Label | Where | Defect | Status | Fix |
+|---|---|---|---|---|---|
+| R1.12 | COSMETIC | `osm/src/main.rs:482` | `drop_pockets` drops 1 hold without a count (OSM 46, `vidp.twr` 45) | CONFIRMED | count dropped holds in the report line |
+| R1.13 | COSMETIC | `shell.html:331-337` | pixel-ratio change at the same size leaves the canvas at half resolution | CONFIRMED | re-run `fit()` on a `(resolution)` media-query change |
+| R1.14 | COSMETIC | `traffic.rs:31` | Surge cap "about 44 min" is 52 min | CONFIRMED | fix the comment |
+| R1.15 | COSMETIC | `shell.html:14`, `:249` | starts dark, ignores `prefers-color-scheme`; likely dark flash for saved-light users | SUSPECTED | inline `<head>` script: saved theme, else system |
+| R1.16 | COSMETIC | `shell.html:337` | resize clears the canvas after the frame is drawn | SUSPECTED | redraw inside `fit()` |
+| R1.17 | COSMETIC | `osm/src/main.rs:337` (uncommitted) | "no taxiway to link stands to" names no stand and aborts early | SUSPECTED | name the stand, collect with the other errors |
+| R1.18 | NOISE | `S/` | 7 screenshots (1.1 MB), untracked, not ignored | CONFIRMED | move to `_archive/`, add `/S/` to `.gitignore` |
+
+### Improvements
+
+| # | Where | Change |
+|---|---|---|
+| R1.19 | `traffic.rs:428` | return early when `stand_queue` is empty (today 270 stands × every aircraft, 60 times a second) |
+| R1.20 | `aircraft.rs:620` `verbs()` | stop cloning the aircraft 7 times per call (`trail` grows without limit); measure before and after |
+| R1.21 | `conflict.rs` `Monitor.departures` | apply the 240 s lookback that `on_airborne` uses; `wake_wait` scans all of it today |
+| R1.22 | `shell.html:449-505` | revision counter; skip strip and list rebuilds when nothing changed |
+| R1.23 | `airport.rs` `p` parse | check the point count against the fields before `Vec::with_capacity(n)` |
+| R1.24 | `aircraft.rs:648` | offer E only when one `set_exit` can succeed |
+| R1.25 | `shell.html:57-62`, `:144`, `:590` | handbook: spring `linear()` easing, squircle in `@supports`, 44 px hit area on Start and theme, `min(460px, 100vw - 32px)` dialog, `mmss(app.shift_len_s())` for "30:00" |
+| R1.26 | `shape.rs:30` | `#[allow(clippy::approx_constant)]` on the outline table, so clippy lints the whole workspace |
+| R1.27 | `crates/sim/tests` | a regression test for each of R1.1 to R1.4, failing before its fix |
+
+### The build
+
+1. **Tests first.** R1.27: write the four sim tests; run them; each must fail on the current code.
+2. **Sim bugs.** R1.1, R1.2, R1.3, R1.4; each test goes green. Then R1.7, R1.10.
+3. **Data format.** R1.9, R1.23, R1.12, R1.17; re-extract `vidp.twr`; `vidp_twr_is_current` passes.
+4. **Performance.** R1.19, R1.20, R1.21, R1.22; `perf_80.py` before and after, medians quoted.
+5. **Shell.** R1.5, R1.6, R1.8, R1.13, R1.15, R1.16, R1.25; a Playwright check for each, failing on the old page.
+6. **Hygiene.** R1.11, R1.14, R1.18, R1.26; clippy exit 0.
+7. **Regression.** `cargo test --release --workspace`, `verify_b2` to `verify_ux1`, `verify_a1`, both themes.
+
+### Out of scope
+
+Nothing from the review. Not in this list: the pre-existing `verify_b2` seed failure (§ UX1), which is still yours to decide.
+
+### Built 2026-11-08
+
+All 27 items are in the code. This session finished R1.11 and R1.18, ran the regression, and fixed four failures the regression found. Three were tests that still assumed pre-R1 behaviour. The fourth was a frame-time regression from R1.25.
+
+| Found by the regression | Cause | Fix |
+|---|---|---|
+| `go_around_without_clearance_and_back_on_final`: 7200 ticks, expected 7201 | R1.3 moved the rejoin after movement, so it sees the circuit reach 0 on the same tick. The `+ 1` was the old order's one-tick lag | expect exactly `GA_CIRCUIT_S * TICK_HZ` |
+| `r1_24_e_only_when_another_exit_can_be_set`: E offered 3538 ticks, withheld 0 | from the default (early) exit, a later exit always had room, so the "withheld" case never arose | give the arrival the farthest exit first. Now 3102 offered, 764 withheld. **With the `exit_room` check removed from `verbs()`, the test fails** (tick 3102, 2856 m: "E offered true, another exit settable false") |
+| `verify_b4` 2 FAIL, `verify_b5` 1 FAIL: incident text red swapped between themes | R1.15: first paint follows the system theme, and Playwright's default system is light. The scripts were written for an always-dark start | both open with `color_scheme="dark"`. 35/35 and 40/40 |
+| `perf_80` parked: rAF-gap median 33.4 ms, 567 of 599 frames over 20 ms | R1.25 put `corner-shape: squircle` on every strip, and UX1's request pulse animates the card's `background-color`, so each pulse step repaints every squircle card. Either alone: 16.7 ms (125 and 113 frames over 20 ms, scratch copies) | the pulse is now the `opacity` of a `::before` tint layer, which the compositor animates without a repaint. Parked median 16.7 ms. Reduced motion holds the layer at opacity 1 |
+
+**Proof, 2026-11-08.**
+- `cargo test --release --workspace --no-fail-fast`: 106 passed, 2 failed (the two above) in 443 s. After the fixes, both pass alone. The fixes touch only test files, so the workspace was not rerun.
+- `cargo clippy --workspace --all-targets`: exit 0, 24 warnings.
+- Verify scripts: b2 30, 29, 29 PASS in three runs. The seed failure from § UX1 did not appear. b3 23, b4 35, b5 40, b6 34, b7 22, b9 21, a1 8, ux1 28, r1 16 PASS. 0 FAIL and 0 page errors in all.
+- `perf_80.py` after the pulse fix: `app.frame` medians 4.9 to 7.55 ms, rAF-gap median 16.7 ms in all five states. Frames over 20 ms: 242, 242, 144 parked and 15, 37 moving.
+
+**Limits.**
+- **Frames over 20 ms in the parked states (144 to 242) are higher than UX1's 7 to 22.** The load average was 6.9 on 4 cores during the run, from other sessions. Unconfirmed whether any of the gap is the page.
+- **R1.19 to R1.22 have no before/after perf numbers.** The pre-R1 page was not kept, and the uncommitted B10, A1, A2 and UX1 changes mean `87f15ba` is not it. R1.20 is guarded for behaviour (`r1_20_verbs_match_a_fresh_clone_per_verb`), not for speed.
+- R1.18: `S/` moved to `../_archive/twr-S-screenshots-20261107/`, and `/S/` added to `.gitignore`.
+- R1.11: README now says 270 stands from the eAIP charts (AIRAC 2026-10-29), 591 OSM taxiway ways, and 108 tests in about 7.5 min.
+
+---
+
+### Built 2026-11-08: C1 strip bays
+
+**Four bays, placed by CSS `order`, not by moving strips.** Headers and strips are siblings in `#bay`; a strip's `order` is `bay * 10000 + rank`. A strip that changes phase changes `order` and moves no DOM node, so a click that began on a verb button cannot be swallowed by a re-parent. The wasm gets two read-only hooks, `bay_of(i)` and `bay_key(i)`.
+
+| Bay | Phases | Sort inside |
+|---|---|---|
+| Pushback | `OnStand` departures, `Pushback` | asking first, then order of appearance |
+| Ground | `Holding`, `Taxi`, `HoldPosition`, `HoldShort`, an arrival parked on its stand | same |
+| Runway | `LineUp`, `LinedUp`, `TakeoffRoll`, `Airborne` | same |
+| Landings | `Final`, `Landing`, `GoAround` | metres to the threshold; a landing roll first, a go-around still circling last |
+
+**Differences from the plan, stated where they matter:**
+- **Ground and Pushback do not sort by time waited.** The sim keeps no wait time per aircraft on the ground (only `stand_since` on stands). A strip that is asking (the UX1 request) goes first, then order of appearance.
+- **`Airborne` sits in Runway** until it becomes `Departed` and its strip leaves. The plan's table did not place it.
+- **Empty bays show no header.** A header with a count of 0 only costs 44 px of a 320 px column. A folded bay keeps its header and count.
+- **Folded state is per page load**, not saved. A folded bay hides its strips, but a selected aircraft stays selected and its keys still work (checked with P).
+- **The "Strips" label is gone**; the bay headers replace it.
+- **Headers are 44 px tall**, not small with extra hit area: a `::after` slop would overlap the strip below.
+
+**Proof, 2026-11-08.** `tools/verify_c1.py`, 21 PASS, six runs after the last edit, 0 FAIL and 0 page errors (one earlier run failed two arrival checks, "landing roll: still Landings" and "vacated, taxiing: Ground"; the cause is unconfirmed and it did not recur in 9 more runs). It checks: counts per header; a departure through Pushback, Ground, Runway by real clicks and keys; an arrival through Landings to Ground; Landings order in a shift (seed 7, four arrivals, DOM order equals `bay_key` order); fold, count kept, unfold; P pressed while its bay is folded; both themes by screenshot. Regression: `verify_b2` 29, `b3` 20, `b4` 35, `b5` 40, `b6` 34, `b7` 22, `b9` 21, `a1` 8, `ux1` 28, `r1` 16, all 0 FAIL. `cargo clippy --workspace --all-targets` exit 0. **Not run:** `cargo test --workspace` (no sim code changed; the web crate has no tests) and `perf_80.py`.
+
+---
+
+### Built 2026-11-09: C2 tail direction on pushback
+
+**P and S now open a picker; Enter takes the first tail.** One arrow per direction on the map (the chosen one solid and heavy, a blocked one dotted), one button per direction on the strip (`1 tail W · N`, pressing its digit), ← → to cycle, Enter or a click on an arrow to send, Esc to cancel. A blocked tail is refused inline (`tail W: IGO713 is 31 m from the tail`) and the picker stays open. The push runs down the stand link, then tail-first along the lane for one aircraft length (`shape::dims`: 37.6 m for an A20N, 73.9 m for a B77W), and the aircraft ends facing back toward the junction.
+
+**The plan's "one aircraft length along the branch" needed more than one edge.** Measured on `vidp.twr`: the lane edges at stand junctions have a median length of 38 m, and 252 of 525 are shorter than an A320. A tail follows the lane through its nodes, taking the straightest continuation at each, until the length is used up or the lane ends (16 of 924 options end early, at a dead end).
+
+| Rule | Why |
+|---|---|
+| **An option that leaves the nose at a dead end is not offered.** From the node ahead, with the pushed edge off limits, the planner must reach a runway exit. | Without it, 48 of 1,020 options (stands 201–218, A08–A10, D46–D50) left an aircraft whose only route was a U-turn. Found when `verify_b2` showed "No route" on some runs, then pinned by the sim test. |
+| **Fewer than two options left means no picker.** `P` pushes at once and stops at the junction, as before. | One option is not a choice. 39 of 270 stands (78 stand/type pairs of 540) fall here: the junction has one lane, or all but one trap. |
+| **`Aircraft::taxi` refuses a first edge equal to the edge the aircraft is on**, and `World::plan` avoids it. | The plan said the taxi "already refuses a U-turn". It did not: only a route's own interior was checked. This also covers a mid-edge reroute, which is a behaviour change outside pushes. |
+
+**Limits.**
+- **Picking a tail now constrains where the aircraft can go.** A destination behind the tail may have no route, and the preview says "No route". That is the plan's intent ("the tail direction decides which way the aircraft can leave"), but it is new friction. `verify_b2` now tries the twelve farthest points in turn for one that has a route.
+- **The default tail (Enter at once) is the first lane the graph lists, not a chosen one.** No preference is modelled.
+- **Room is checked at the push's start, along the lane every 5 m and at the end**, against every visible aircraft's body (half of each length, summed). An aircraft that moves in later is the ground check's business.
+- **A tail ends mid-lane, so the aircraft is `Holding` on an edge.** Nothing else assumed Holding means "at a node"; the 110-test workspace run and the verify scripts found no case.
+
+**Proof, 2026-11-09.**
+- `crates/sim/tests/c2_tail.rs`: for every stand (270) and both an A20N and a B77W, every option: rolled distance (ticks times `PUSH_MDM_PER_TICK`, independent of the option's own figure) equals one length or the lane's length to within 0.05 m; the aircraft stops on an edge facing the junction; a taxi back along the pushed edge is refused with "U-turn"; a planned taxi never reuses it and is accepted. 924 options, 924 U-turns refused, 924 taxied on. A blocked tail is refused and names the aircraft. **With the pushed length cut by 1 m, the length check fails ("rolled 366000 mdm of lane, wanted 375700"); with the U-turn refusal removed, the U-turn check fails.**
+- `tools/verify_c2.py`, 17 PASS, 0 FAIL (seed 7: tail W and tail E): P opens the picker without pushing; → and ← move the choice; Esc cancels; Enter pushes tail E; the preview to a runway entry 181 edges long does not use the pushed edge; Enter sends the taxi; digit 2 and button 1 push down different lanes; S opens the same picker and the taxi builder opens when the push ends; light theme screenshot.
+- Regression: `cargo test --release --workspace --no-fail-fast` 110 passed, 0 failed, run before the dead-end filter; after it, the quick suites (lib 37, `b4_rules`, `b5_arrivals`, `b7_score`, `r1_regressions`, `c2_tail`) pass again, and `b4_long_run`, `b6_*` and `b9_wind` were not rerun. `verify_b3` 21, `b4` 35, `b5` 40, `b6` 34, `b7` 22, `b9` 21, `a1` 8, `ux1` 28, `c1` 21, `r1` 16: 0 FAIL. `cargo clippy --workspace --all-targets`: 0 errors.
+- **`verify_b2` still fails on some runs (2 of the last 8), for two causes, neither the tail logic.** (1) The old seed-dependent "right-click avoid" check (§ UX1), which failed 3 times in about 20 runs today; its rate before C2 is unmeasured. (2) The fallback destination (a stand, when no hold point is on screen) can be one the A20N is too big for: "stand R05 takes code B; A20N is C" (A2), so Enter refuses. That is older than C2, unconfirmed on the pre-C2 build. Both are the test's choice of destination.
+- **Not run:** `perf_80.py` (Push mode draws a few arrows per frame only while open).
+- **Scripts changed:** `verify_b2`, `b3`, `b9`, `ux1`, `c1` and `perf_80.py` press Enter after P or S; `verify_b2` and `b3` read the trail as the last N edges, since it now starts with the lane edges.
+
+---
+
+### Built 2026-11-09: C4 runway picker
+
+**The wind panel's "Runways" line is now a picker.** A direction pair (West, East) and, for the direction shown, a Land and a Depart toggle per end (`29L 28 29R 27` or `11R 10 11L 09`). Pressed is solid ink. A runway can be on both rows (mixed mode). The wind's own pick is the default each shift, so a shift nobody touches draws exactly what B6 to B9 drew: the draw still takes one `next_u64` per movement, and with the default plan `Plan::pick` returns the same end (`b6_*`, `b9_wind` pass unchanged). Practice has no traffic, so its picker is hidden and the note says "Practice: fixed".
+
+| Rule | What it does |
+|---|---|
+| **One direction at a time** | Toggling an end of the other direction is refused inline: "29L faces west, the plan is east: switch direction first". |
+| **Tailwind** | Warned from 5 kt in the note ("10 kt of tailwind on 11R 10 11L 09 (over 5)"). Refused past 10: "east flow: 11R would have 14 kt of tailwind, limit 10". Both numbers are `authored`, from memory, unconfirmed. |
+| **At least one of each** | The last landing end and the last departure end refuse to turn off. |
+| **Heavies need 3,100 m** | A heavy departure draws only from picked ends of 3,100 m or more (29L, 28, 29R and their east twins: 4,421, 3,808, 4,404 m). With only 27 or 09 picked it queues without a runway, and the note says "N heavy departures waiting on stand: no departure runway of 3100 m or more". Putting 29R back releases it on the next tick. |
+| **A switch waits** | The other direction's default ends wait until nothing is on the old direction: no queued movement with an old runway, nothing on final, landing, going around, lined up, rolling or airborne on one, and no departure assigned to one that has not left. Meanwhile new movements draw no runway and queue; once it takes over they draw from the new plan. Everything assigned before keeps its runway. Pressing the direction in force cancels the wait. |
+
+**Limits, stated where the claim is made:**
+- **A switch only ends when the old direction is empty, and the player empties it.** In `verify_c4` (nobody flies the aircraft) it was still waiting 200 game seconds on, with 6 aircraft and movements on the old runways and 1 held. The note keeps saying so and counting them; there is no timeout and no forced switch.
+- **Tailwind uses the mean wind, not the gust, and one heading per direction** (284° west, 104° east, as B9 does: the four ends lie within 13°).
+- **The plan's "reassign one by its strip" is not built.** Departures' runways are advice (the pilot lines up where you taxi it), and an arrival already on final keeps its runway. Moving an aircraft already on final would need a new route; deferred, nothing depends on it.
+- **A heavy waiting for a runway is queued, not drawn on a stand.** It has no strip, so the delay score does not count it. It is counted in "offered", as every queued movement is.
+- **Bests are not split by plan.** A shift on a non-default pick writes the same personal bests; the plan is not saved with a result.
+- **Mixed mode is checked by the model, not by a mixed-mode rule set of its own:** the Peak runs below (29R lands and departs) raise nothing.
+
+**Proof, 2026-11-09.**
+- `crates/sim/tests/c4_runways.rs`, 5 tests: the `ENDS` length table equals the airport's, per end; the rules at their edges (a 100/08 wind warns 8 kt and allows west; 100/12 refuses with "limit 10" and leaves nothing waiting; the other direction's end refused; last-of-kind refusals; Practice refuses); a switch at 6 minutes into a Peak shift (waits, holds movements, `held_seen` true, takes over, 8 of 8 later movements on east runways, every aircraft assigned before keeps its runway, 0 incidents); a heavy waits when only 27 departs and is released by 29R; **Peak, 2 real hours, 4 seeds, 29R landing and departing and 28 departing as well: 0 incidents, every departure out, every arrival parked, 29R carried 13 to 23 movements per seed.** **With `HEAVY_RUN_M` set to 0 the heavy test fails; with the busy check removed from the switch, the switch test fails.**
+- `tools/verify_c4.py`, 22 PASS, 0 FAIL, real clicks: Practice hides the picker; the direction in force is pressed and four ends show; 29R toggles on and off and the sim's text agrees; the last departure end refuses inline and the next press clears it; a switch says "East (waiting)" and "switching to east: waiting for west runways to clear, 6 aircraft and movements still on them", west stays in force, pressing west again cancels; on an empty airport the switch takes over at once and the east ends show; seed 2's 14 kt wind refuses the switch in words and nothing waits; dark and light screenshots.
+- Regression: `cargo test --release --workspace --no-fail-fast` 115 passed, 0 failed (`b4_long_run` 115 s). `verify_b2` 29, `b3` 24, `b4` 35, `b5` 40, `b6` 34, `b7` 22, `b9` 21, `a1` 8, `ux1` 28, `c1` 21, `c2` 17, `r1` 16: 0 FAIL. `cargo clippy --workspace --all-targets`: 0 errors.
+- **Scripts changed:** `verify_b9` reads the picker's pressed toggles in place of the old `#rwys` text.
+- **Not run:** `perf_80.py`; a Peak run on the east direction or with a switch inside it for more than 6 minutes; a pick with 5 to 10 kt of tailwind in a long run.
+
+## Built 2026-11-10 — title screen (W2)
+
+**F2 is reversed: there is a title screen.** `web/shell.html` opens a native `<dialog id="title">` on every load: the name `twr`, `© OpenStreetMap contributors`, `eAIP AIRAC 2026-10-29` (constant `AIRAC` in the shell), `OSM extract` read from `app.osm_base()` (2026-11-05, from `data/vidp.twr`), and **Not for real-world navigation**. The map-corner credit stays. Start or Esc closes it; the sim is paused until then.
+
+**Handbook picks.** Look: the result dialog's surface tokens (`--elev`, `--scrim`). Motion: opacity plus a 12 px rise on the press spring (`--spring-press`, a `linear()` transition with `@starting-style`, so a close mid-open turns back); reduced motion is a 120 ms opacity fade. Interaction: Start is 44 px high; Esc closes (native dialog).
+
+**Limit, stated plainly.** Automated browsers (`navigator.webdriver`) skip the title, or every verify script that clicks straight after load would hit the modal. `?title=1` forces it. A real browser always sees it; a human with `webdriver` set would not.
+
+**Checked, Playwright, real clicks.** 1500 and 1920 px, light and dark, normal and reduced motion: dialog modal, all five lines present, Start 120x44, popup against dimmed backdrop 3.35:1 light and 2.92:1 dark (floor 2.5:1), no console error, Start and Esc both close. In the snapshot build: `verify_b9.py` 21/21, `verify_ux1.py` 28 PASS 0 FAIL.
+
+**Housekeeping.** The 34 root-level screenshots moved to `../_archive/twr-screens-20261110/`; `/*.png` added to `.gitignore`. README "Data, licence, privacy" gained the title-screen paragraph. Nothing committed, `crates/` untouched.
+
+---
+
+### Built 2026-11-10: verify debt
+
+**`verify_b2` no longer flakes, and the two Peak long runs C4 listed as not run are done.** Built and run in a snapshot of the folder (no `target/`), then only `tools/verify_b2.py` and `crates/sim/tests/c4_long.rs` copied back.
+
+**`verify_b2`: 16 of 20 passed before, 20 of 20 after** (same machine, same page, 20 runs each, a random seed per run). The 4 failures, by cause:
+
+| Failures | What failed | Cause |
+|---|---|---|
+| 3 of 20 | "aircraft moves in real time: 0.0 px", "followed path equals drawn path", "aircraft stops at the clicked destination" | The fallback destination (a stand, when no hold point is on screen) was one the A20N is too small for, so Enter refused. **Inferred, not read from the hint:** the three fail together at the first move after Enter, and only the stand fallback can be refused there. |
+| 1 of 20 | "a right-click avoid produced a different route" (seed 3221133235) | All 38 preview edges of the one destination tried had no alternative, so every avoid cut every route. The planner was right; the test had one destination. |
+
+- **Fix 1: no stand fallback.** The script zooms out about the canvas centre (up to 8 wheel notches) until 6 hold points are on screen. A hold point has no size rule.
+- **Fix 2: one loop over destinations.** A destination whose every avoid cuts every route is dropped and the next of the 12 farthest is tried. The check still fails if none of them has an avoidable edge.
+- **Limit:** 20 of 20 is a sample, not a proof. A clean 20 cannot show a failure rate below about 14% (95% confidence). The harness count (29 checks) varies run to run with the via search, as before.
+
+**`crates/sim/tests/c4_long.rs`: Peak, 2 real hours, 4 seeds each, shared auto-controller, `halt_on_end` off.** Both tests pass (42 s). Every run: 0 incidents, every departure out, every arrival parked, every movement on an end of the intended direction. Delay is `Score::delay_min`, **aircraft-minutes summed over aircraft**, not a mean per aircraft; the range is the longest wait of any one aircraft (the shortest was 0 s in all eight runs).
+
+| Seed | Arr / dep | East flow (100/06): delay, longest wait | Tailwind, west plan: wind, delay, longest wait |
+|---|---|---|---|
+| 1 | 18 / 23 | 136.7 min, 573 s | 100/06, 100.1 min, 442 s |
+| 2 | 23 / 25 | 278.2 min, 915 s | 100/07, 320.1 min, 1002 s |
+| 3 | 16 / 20 | 54.8 min, 285 s | 100/08, 62.3 min, 405 s |
+| 4 | 24 / 20 | 150.9 min, 364 s | 100/09, 154.3 min, 516 s |
+
+- **The tailwind runs use an easterly of 6 to 9 kt with the plan switched to west** (the picker's own `runway_direction`), which gives 5 to 10 kt of tailwind; the test asserts that range. The same seeds draw the same movements in both tests, so the columns compare directly.
+- **East flow is forced by the wind (100/06), not picked.** It is the default east plan, not a non-default pick.
+- **Tailwind raised delay on 3 of 4 seeds and lowered it on 1:** seed 1 -27% (136.7 to 100.1), seed 2 +15%, seed 3 +14%, seed 4 +2%. The sign is not consistent and four seeds are too few to say tailwind changes delay. **Tailwind has no modelled effect on the aircraft;** the sim uses it only for the warning and the refusal, so any difference comes from which runways the plan picks.
+- **Score counts the first 30 game-minute shift**, so `movements` (41, 48, 36, 44) equals the log's arrivals plus departures. The remaining 90 minutes run for the incident and completion checks only.
+- **Not run:** `perf_80.py`, by instruction (other windows load the machine); a switch inside a Peak run for more than 6 minutes. **Not rerun:** the rest of the workspace suite and the other verify scripts, which this change does not touch.
+
+### Built 2026-11-10: regression (W6)
+
+**Everything passes except `perf_80.py`, which cannot finish its "moving" state.** Nothing was fixed; this section records what ran. Run on the uncommitted working tree after `./build.sh` (the `dist/index.html` on disk was from 13:11, older than the sources, so it was rebuilt first). **The machine was never quiet:** the 1-minute load average sat between 1.0 and 3.4 for the 9 minutes W6 waited for it to drop under 1.5 (it touched 1.07 and 1.40 for one reading each, never held), and read 4 to 8 during the verify scripts and `perf_80`. Pass counts do not depend on load; every timing below is **unconfirmed**.
+
+| Check | Result |
+|---|---|
+| `cargo test --release --workspace --no-fail-fast` | **126 passed, 0 failed, 0 ignored** in 16 result blocks (README said 108). Wall time about 267 s including the build, load 2.2 before and 2.95 after: unconfirmed. Slowest binary: `b4_long_run`, 109 s |
+| `cargo clippy --workspace --all-targets` | Exit 0, 0 errors, **16 distinct warnings**: 8 collapsible `if`, 4 `is_multiple_of`, and 1 each of `type_complexity`, `too_many_arguments`, `manual_range_contains`, unequal hex digit groups. By file: `tests/common/mod.rs` 7, `conflict.rs` 3, `aircraft.rs` 2, `traffic.rs` 1, `web/src/lib.rs` 1, `b4_rules.rs` 1, `b6_traffic.rs` 1 |
+| Stand count | 270, unchanged: 270 `s` records in `data/vidp.twr`, 270 rows in `data/vidp.stands.csv` |
+
+**Verify scripts: 317 checks, 0 FAIL, 13 of 13 scripts pass.**
+
+| Script | PASS | Script | PASS |
+|---|---|---|---|
+| `verify_a1` | 8 | `verify_c1` | 21 |
+| `verify_b2` | 29 | `verify_c2` | 17 |
+| `verify_b3` | 24 | `verify_c4` | 22 |
+| `verify_b4` | 35 | `verify_r1` | 16 |
+| `verify_b5` | 40 | `verify_ux1` | 28 |
+| `verify_b6` | 34 | | |
+| `verify_b7` | 22 | | |
+| `verify_b9` | 21 | | |
+
+- **`verify_b3` read 24, `tools/README.md` says 23.** The table was last updated 2026-11-08; the script gained a check since. Not edited here.
+- **`verify_b2` read 29, which matches its known run-to-run spread** (29 or 30, via search).
+- **`verify_r1` takes an optional page path, not a screenshot folder.** Given a folder, as the other scripts take, it exits 1 with `ERR_FILE_NOT_FOUND`; run bare it passes 16/16. `tools/README.md` shows it without arguments, so the docs are right and a loop over every script is what trips.
+
+**`perf_80.py` fails: BUG (high) for the script, cause unconfirmed.** Three runs of three (one at load 7, two at load 6.7 and 6.9), the same stack each time. The three parked states finished; the "moving" state dies inside `set_moving` (`tools/perf_80.py:57`) on `a.phase(i)` with `RuntimeError: unreachable` from wasm. `App::phase` is `self.world.aircraft[i].phase` (`crates/web/src/lib.rs:865`), so the likely cause is an index `i` from the strip list that is past the end of `world.aircraft`, a Rust bounds panic. **That is inferred from the source, not reproduced in isolation.** Which side moved (the script's `deps` list or the web crate, whose diff is +514 lines) was not checked.
+
+| Parked state (unconfirmed, load 7 to 8) | `app.frame` median | rAF-gap median | Frames over 20 ms |
+|---|---|---|---|
+| 1500x950, dpr 1 | 5.30 ms | 16.7 ms | 156 of 599 |
+| 1920x1080, dpr 1 | 5.30 ms | 16.7 ms | 189 of 599 |
+| 1500x950, dpr 2 | 7.00 ms | 33.3 ms | 367 of 599 |
+
+- **The dpr 2 rAF gap of 33.3 ms is not comparable to the 16.7 ms recorded after the pulse fix.** Load was 7 to 8; no number here counts as a regression or as proof of none.
+- **No moving-state number exists from this run.** The earlier "after the pulse fix" figures (§ R1) are the latest valid ones.

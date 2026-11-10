@@ -95,8 +95,10 @@ with sync_playwright() as pw:
     pg.select_option("#mode", "light"); pg.fill("#seed-in", str(east_seed)); pg.click("#start"); frame(pg)
     wind, flow = pg.text_content("#wind"), pg.text_content("#flow")
     check(wind == app(pg, "a.wind_text()") and flow == "east", f"bar shows the sim's wind: {wind}, {flow}")
-    rwys = pg.text_content("#rwys")
-    check(rwys == "land 11R 10 · depart 11L 09", f"panel names the runways: {rwys!r}")
+    # C4: the panel names them as pressed toggles, the sim's text agrees.
+    pr = lambda sel: pg.evaluate(f"[...document.querySelectorAll('{sel} button')].filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.dataset.end).join(' ')")
+    rwys = f"land {pr('#rw-land')} · depart {pr('#rw-dep')}"
+    check(rwys == "land 11R 10 · depart 11L 09" and app(pg, "a.runways_text()") == rwys, f"panel names the runways: {rwys!r}")
     check(re.fullmatch(r"\d{3}/\d{2}(G\d{2})?", wind) is not None, f"METAR-style wind: {wind}")
 
     # ---- east flow end to end: one arrival, one departure, real keys ----------
@@ -129,7 +131,7 @@ with sync_playwright() as pw:
     i = app(pg, f"{deps}[0]")
     state = app(pg, f"a.strip_state({i})")
     want = re.search(r"dep (\w+)", state).group(1)
-    pg.click(f"#strip{i}"); pg.keyboard.press("p"); frame(pg)
+    pg.click(f"#strip{i}"); pg.keyboard.press("p"); pg.keyboard.press("Enter"); frame(pg)
     ff_until(pg, f"a.phase({i}) === 'Holding'")
     pg.keyboard.press("t"); frame(pg)
     zoom_at(cw / 2, ch / 2, -12)

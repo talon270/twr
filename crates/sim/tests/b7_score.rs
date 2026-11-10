@@ -198,3 +198,46 @@ fn same_seed_same_commands_same_score() {
     assert_eq!(a, b);
     assert!(a.movements > 0);
 }
+
+/// What makes a strip flash: an aircraft waiting on a clearance you could
+/// give. Narrower than the delay rules on purpose: a hold you ordered (H) or
+/// a hold short of a runway in use is not a request.
+#[test]
+fn requesting_marks_what_waits_on_you() {
+    // On stand: a request only once the grace has run out, and not for an
+    // aircraft with no due time (Practice's parked IGO512).
+    let mut w = scored(World::empty(1));
+    let stand = w.airport.stands[10].node;
+    let dep = w.add(Aircraft { ready: Some(0), assigned: Some("29R"), ..Aircraft::parked("IGO1", stand) });
+    let idle = w.add(Aircraft::parked("IGO2", w.airport.stands[11].node));
+    w.step_ticks(GRACE as u32);
+    assert!(!w.requesting(dep), "on the last tick of the grace");
+    w.step_ticks(1);
+    assert!(w.requesting(dep), "the first tick past the grace");
+    assert!(!w.requesting(idle), "no due time, no request");
+
+    // Pushed: nothing while pushing, a request to taxi once it stops.
+    w.push(dep).unwrap();
+    assert!(!w.requesting(dep));
+    while w.aircraft[dep].phase == Phase::Pushback {
+        w.step_ticks(1);
+    }
+    assert_eq!(w.aircraft[dep].phase, Phase::Holding);
+    assert!(w.requesting(dep), "holding after the push asks for a taxi clearance");
+
+    // Final: a request until cleared to land.
+    let a = w.spawn_arrival("ARR", Wake::M, "29L").unwrap();
+    assert!(w.requesting(a), "on final, not cleared");
+    w.clear_to_land(a).unwrap();
+    assert!(!w.requesting(a), "cleared");
+
+    // Lined up with the runway free asks for takeoff; rolling does not. The
+    // crosser held short of 29R is waiting for the rule, not asking.
+    let mut w = scored(World::scenario(1, "runway").unwrap());
+    let dep = w.aircraft.iter().position(|a| a.callsign == "IGO512").unwrap();
+    let crosser = w.aircraft.iter().position(|a| a.callsign == "IGO701").unwrap();
+    assert!(w.requesting(dep), "lined up, runway free");
+    assert!(!w.requesting(crosser), "held short is not flashed");
+    w.takeoff(dep).unwrap();
+    assert!(!w.requesting(dep), "rolling");
+}

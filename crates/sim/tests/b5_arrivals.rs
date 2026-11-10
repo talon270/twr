@@ -5,6 +5,7 @@ use twr_sim::aircraft::{LAND_DECEL_MDM, LAND_MDM_PER_TICK, MDM_PER_M, TAXI_MDM_P
 use twr_sim::arrival::{brake_mdm, candidates, exits, threshold, DECISION_M, EXIT_MAX_TURN_DEG, GA_CIRCUIT_S};
 use twr_sim::conflict::on_runway;
 use twr_sim::scenario::{crossing, entry};
+use twr_sim::traffic::{ON_STAND_REAL_S, TICKS_PER_REAL_S};
 use twr_sim::{Aircraft, GoAround, Phase, Rule, Wake, World, PAGE_ARRIVAL_RWY, TICK_HZ};
 
 fn empty() -> World {
@@ -257,7 +258,9 @@ fn go_around_without_clearance_and_back_on_final() {
     assert!(!w.go_arounds[0].why.challenge());
     until(&mut w, 10_000, |w| !w.aircraft[a].visible());
     let hidden = until(&mut w, 100_000, |w| matches!(w.aircraft[a].phase, Phase::Final(_)));
-    assert_eq!(u64::from(hidden), GA_CIRCUIT_S * u64::from(TICK_HZ) + 1);
+    // Exact since R1.3: the rejoin runs after movement, on the tick the
+    // circuit reaches 0. Before movement, it saw that one tick late.
+    assert_eq!(u64::from(hidden), GA_CIRCUIT_S * u64::from(TICK_HZ));
     assert!(!w.aircraft[a].cleared_to_land);
     w.clear_to_land(a).unwrap();
     w.aircraft[a].pilot_ga = None;
@@ -343,6 +346,21 @@ fn occupied_stand_is_refused() {
     assert_eq!(e, format!("stand {} occupied by PARK", s.name));
 }
 
+/// B10, A2: T to a stand too small for the type is refused inline, with
+/// both letters; the same stand takes an A20N.
+#[test]
+fn stand_too_small_is_refused() {
+    let mut w = empty();
+    let a = arrival(&mut w, "ARR", "29L", 0);
+    until(&mut w, 20_000, |w| w.aircraft[a].phase == Phase::Holding);
+    let s = w.airport.stands.iter().find(|s| s.code == 'C' && w.plan(a, s.node, &[], &[]).is_some()).unwrap().clone();
+    let r = w.plan(a, s.node, &[], &[]).unwrap();
+    w.aircraft[a].type_code = "B77W";
+    assert_eq!(w.taxi(a, r.clone()).unwrap_err(), format!("stand {} takes code C; B77W is E", s.name));
+    w.aircraft[a].type_code = "A20N";
+    w.taxi(a, r).unwrap();
+}
+
 /// The page's world: one departure on a stand and IGO713 on final for 29L.
 /// An hour of it with nobody at the controls replays exactly.
 #[test]
@@ -358,4 +376,41 @@ fn page_world_has_an_arrival_and_replays() {
     assert_eq!(a, b);
     println!("one hour, nobody at the controls: {} go-arounds", a.1.len());
     assert!(a.1.len() >= 5, "goes around every circuit");
+}
+
+/// Final, C, land, T to a free stand, X at every crossing: parked.
+fn park_arrival(w: &mut World, a: usize) {
+    until(w, 20_000, |w| w.aircraft[a].phase == Phase::Holding);
+    let stands: Vec<u32> = w.airport.stands.iter().map(|s| s.node).collect();
+    let taxi = stands.iter().rev().find_map(|&s| w.plan(a, s, &[], &[])).unwrap();
+    w.taxi(a, taxi).unwrap();
+    while w.aircraft[a].phase != Phase::OnStand {
+        until(w, 200_000, |w| matches!(w.aircraft[a].phase, Phase::HoldShort(_) | Phase::OnStand));
+        if matches!(w.aircraft[a].phase, Phase::HoldShort(_)) {
+            w.cross(a).unwrap();
+        }
+    }
+}
+
+/// An arrival that parks leaves the game after ON_STAND_REAL_S, with or
+/// without a traffic stream: Practice has none, and its arrival used to sit
+/// on the stand for ever. A departure parked on a stand is not an arrival
+/// and stays.
+#[test]
+fn an_arrival_shuts_down_on_its_stand_without_a_traffic_stream() {
+    let mut w = empty();
+    assert!(w.traffic.is_none(), "this test is about the world with no stream");
+    let a = arrival(&mut w, "ARR", PAGE_ARRIVAL_RWY, 8_000);
+    let stand = w.airport.stands.first().unwrap().node;
+    let d = w.add(Aircraft::parked("DEP", stand));
+    park_arrival(&mut w, a);
+    let wait = ON_STAND_REAL_S * TICKS_PER_REAL_S;
+    // The timer starts the tick after it is seen on stand, so one tick of
+    // slack either side of the boundary, no more.
+    w.step_ticks((wait - 2) as u32);
+    assert_eq!(w.aircraft[a].phase, Phase::OnStand, "still parked just before {ON_STAND_REAL_S} real s");
+    w.step_ticks(4);
+    assert_eq!(w.aircraft[a].phase, Phase::ShutDown, "shut down at {ON_STAND_REAL_S} real s");
+    w.step_ticks(wait as u32);
+    assert_eq!(w.aircraft[d].phase, Phase::OnStand, "a departure on its stand is not shut down");
 }

@@ -14,7 +14,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use serde_json::Value;
-use twr_sim::airport::{Airport, Edge, EdgeKind, Hold, Node, Runway, Stand};
+use twr_sim::airport::{Airport, Edge, EdgeKind, Area, Hold, Node, Runway, Stand};
 
 /// A stand further than this from every taxiway is refused, not linked. IGI's
 /// longest link is about 130 m (2026-11-05 data). Past 200 m the straight link
@@ -53,6 +53,27 @@ struct Overrides {
     taxiway: BTreeMap<u64, String>,
     hold: BTreeMap<u64, String>,
     stand: BTreeMap<u64, String>,
+    /// B10: stands from the eAIP charts (`data/<icao>.stands.csv`): name,
+    /// lat, lon, code letter. When present they replace OSM's
+    /// parking_position nodes, which miss Apron II and all of T3 at IGI.
+    chart_stands: Option<Vec<(String, f64, f64, char)>>,
+}
+
+/// `stand,lat,lon,apron,max_code_letter,chart,airac`, as written by
+/// research/work/vidp/stands_from_charts.py.
+fn parse_stands_csv(text: &str) -> Result<Vec<(String, f64, f64, char)>, String> {
+    let mut out = Vec::new();
+    for (k, line) in text.lines().enumerate().skip(1) {
+        let f: Vec<&str> = line.split(',').collect();
+        let bad = || format!("stands.csv line {}: {line}", k + 1);
+        if f.len() < 5 {
+            return Err(bad());
+        }
+        let (lat, lon) = (f[1].parse::<f64>().map_err(|_| bad())?, f[2].parse::<f64>().map_err(|_| bad())?);
+        let code = f[4].chars().next().filter(|c| ('A'..='F').contains(c)).ok_or_else(bad)?;
+        out.push((f[0].to_string(), lat, lon, code));
+    }
+    Ok(out)
 }
 
 fn tags_of(v: &Value) -> Tags {
@@ -209,6 +230,7 @@ fn extract(icao: &str, osm: &Osm, ov: &Overrides) -> Result<(Airport, Vec<String
         runways: Vec::new(),
         stands: Vec::new(),
         holds: Vec::new(),
+        areas: Vec::new(),
     };
     let mut seen = std::collections::HashSet::new();
     for w in &net {
@@ -278,21 +300,46 @@ fn extract(icao: &str, osm: &Osm, ov: &Overrides) -> Result<(Airport, Vec<String
     // Stands. OSM marks the parking spot beside the taxilane, not on it, so
     // each gets a straight link to its nearest taxiway point. Checked against
     // IGI's terminal outlines on 2026-11-05: no link crosses a building.
-    let mut stand_ids: Vec<u64> = osm.nodes.iter().filter(|(_, n)| aeroway(&n.2) == "parking_position").map(|(&id, _)| id).collect();
-    stand_ids.sort();
+    // Each source becomes (name, position, code letter, what to call it in an error).
+    let sources: Vec<(String, (f64, f64), char, String)> = match &ov.chart_stands {
+        Some(list) => list.iter().map(|(n, lat, lon, c)| (n.clone(), (*lat, *lon), *c, format!("chart stand {n}"))).collect(),
+        None => {
+            let mut ids: Vec<u64> = osm.nodes.iter().filter(|(_, n)| aeroway(&n.2) == "parking_position").map(|(&id, _)| id).collect();
+            ids.sort();
+            let mut v = Vec::new();
+            for id in ids {
+                let name = ov.stand.get(&id).or(osm.nodes[&id].2.get("ref")).cloned().unwrap_or_default();
+                v.push((name, coord(id)?, '-', format!("node {id}")));
+            }
+            v
+        }
+    };
+    // B10: terminal outlines, so a link never runs through a building. Four
+    // chart stands at T3's pier corners (B26, B26R, C34, C34R) are nearest
+    // to a taxilane on the far side of the pier.
+    let terminals: Vec<Vec<(f64, f64)>> = osm.ways.iter()
+        .filter(|w| aeroway(&w.tags) == "terminal")
+        .map(|w| w.nodes.iter().filter_map(|&n| coord(n).ok()).map(|ll| m(to_dm(ll))).collect())
+        .collect();
+    let crosses = |p: (f64, f64), q: (f64, f64)| {
+        let side = |a: (f64, f64), b: (f64, f64), c: (f64, f64)| (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+        terminals.iter().any(|r| r.windows(2).any(|w| side(p, q, w[0]) * side(p, q, w[1]) < 0.0 && side(w[0], w[1], p) * side(w[0], w[1], q) < 0.0))
+    };
     let mut splits: BTreeMap<usize, Vec<(f64, u32)>> = BTreeMap::new();
     let mut links = Vec::new();
-    for id in stand_ids {
-        let tags = &osm.nodes[&id].2;
-        let name = ov.stand.get(&id).or(tags.get("ref")).cloned().unwrap_or_default();
-        let at = to_dm(coord(id)?);
+    for (name, ll, code, what) in sources {
+        let at = to_dm(ll);
         let best = ap.edges[..network_edges].iter().enumerate()
             .filter(|(_, e)| e.kind == EdgeKind::Taxiway)
             .map(|(ei, e)| (ei, nearest_on(m(at), m(ap.nodes[e.a as usize]), m(ap.nodes[e.b as usize]))))
+            .filter(|(_, (_, _, q))| !crosses(m(at), *q))
             .min_by(|x, y| x.1.0.total_cmp(&y.1.0));
-        let Some((ei, (dist, t, q))) = best else { return Err("no taxiway to link stands to".into()) };
+        let Some((ei, (dist, t, q))) = best else {
+            errs.push(format!("stand '{name}' ({what}) has no taxiway it can link to"));
+            continue;
+        };
         if dist > MAX_STAND_LINK_M {
-            errs.push(format!("stand '{name}' (node {id}) is {dist:.0} m from any taxiway"));
+            errs.push(format!("stand '{name}' ({what}) is {dist:.0} m from any taxiway"));
             continue;
         }
         let e = &ap.edges[ei];
@@ -311,7 +358,7 @@ fn extract(icao: &str, osm: &Osm, ov: &Overrides) -> Result<(Airport, Vec<String
         };
         ap.nodes.push(at);
         let s = ap.nodes.len() as u32 - 1;
-        ap.stands.push(Stand { name, node: s });
+        ap.stands.push(Stand { name, node: s, code });
         links.push(Edge { a: s, b: target, kind: EdgeKind::StandLink, name: String::new() });
     }
     // Split each segment a stand link lands on, in order along it.
@@ -344,7 +391,23 @@ fn extract(icao: &str, osm: &Osm, ov: &Overrides) -> Result<(Airport, Vec<String
     if !errs.is_empty() {
         return Err(errs.join("\n"));
     }
-    let pockets = drop_pockets(&mut ap);
+    // B10: aprons and terminal outlines, for the map only. Closed ways in
+    // way-id order; the closing point is not repeated.
+    let mut area_ways: Vec<&Way> = osm.ways.iter()
+        .filter(|w| matches!(aeroway(&w.tags), "apron" | "terminal") && w.nodes.len() >= 4 && w.nodes.first() == w.nodes.last())
+        .collect();
+    area_ways.sort_by_key(|w| w.id);
+    for w in area_ways {
+        let mut ring = Vec::new();
+        for &n in &w.nodes[..w.nodes.len() - 1] {
+            let p = to_dm(coord(n)?);
+            ring.push((p.x, p.y));
+        }
+        let kind = if aeroway(&w.tags) == "terminal" { 't' } else { 'a' };
+        let name = w.tags.get("name").or(w.tags.get("ref")).cloned().unwrap_or_default();
+        ap.areas.push(Area { kind, ring, name });
+    }
+    let (pockets, holds_dropped) = drop_pockets(&mut ap);
 
     // The report: what the data lacks, in numbers.
     let twy: Vec<&Edge> = ap.edges.iter().filter(|e| e.kind == EdgeKind::Taxiway).collect();
@@ -382,8 +445,9 @@ fn extract(icao: &str, osm: &Osm, ov: &Overrides) -> Result<(Airport, Vec<String
         ));
     }
     report.push(format!(
-        "holding points: {}, named {}",
+        "holding points: {} ({} more in OSM dropped with the pockets), named {}",
         ap.holds.len(),
+        holds_dropped,
         ap.holds.iter().filter(|h| !h.name.is_empty()).count()
     ));
     report.push(format!(
@@ -404,8 +468,9 @@ fn extract(icao: &str, osm: &Osm, ov: &Overrides) -> Result<(Airport, Vec<String
 /// A3 north of 09/27 (35 nodes, 2026-11-05), probably the Air Force side;
 /// that guess is unconfirmed. An arrival cleared off the runway there could
 /// only taxi into a dead end, so the game never offers it. Returns one line
-/// per pocket for the report: its names and size.
-fn drop_pockets(ap: &mut Airport) -> Vec<String> {
+/// per pocket for the report: its names and size, and how many holding
+/// points went with them.
+fn drop_pockets(ap: &mut Airport) -> (Vec<String>, usize) {
     let comp = ap.components(|e| e.kind != EdgeKind::Runway);
     let has_stand: std::collections::HashSet<u32> = ap.stands.iter().map(|s| comp[s.node as usize]).collect();
     let dead = |n: u32| !has_stand.contains(&comp[n as usize]);
@@ -419,7 +484,9 @@ fn drop_pockets(ap: &mut Airport) -> Vec<String> {
         }
     }
     ap.edges.retain(|e| e.kind == EdgeKind::Runway || !dead(e.a));
+    let holds_before = ap.holds.len();
     ap.holds.retain(|h| !dead(h.node));
+    let holds_dropped = holds_before - ap.holds.len();
 
     // Renumber: drop nodes no edge uses any more, keep the order of the rest.
     let mut used = vec![false; ap.nodes.len()];
@@ -443,13 +510,14 @@ fn drop_pockets(ap: &mut Airport) -> Vec<String> {
     ap.stands.iter_mut().for_each(|s| re(&mut s.node));
     ap.holds.iter_mut().for_each(|h| re(&mut h.node));
 
-    pockets
+    let lines = pockets
         .into_values()
         .map(|(names, edges)| {
             let names = if names.is_empty() { "unnamed".to_string() } else { names.join(" ") };
             format!("{names} ({edges} edges)")
         })
-        .collect()
+        .collect();
+    (lines, holds_dropped)
 }
 
 fn data_dir() -> std::path::PathBuf {
@@ -468,6 +536,12 @@ fn run(icao: &str) -> Result<(Airport, Vec<String>), String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Overrides::default(),
         Err(e) => return Err(e.to_string()),
     };
+    let mut ov = ov;
+    match std::fs::read_to_string(dir.join(format!("{lower}.stands.csv"))) {
+        Ok(t) => ov.chart_stands = Some(parse_stands_csv(&t)?),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
     extract(&icao.to_uppercase(), &parse_osm(&raw)?, &ov)
 }
 
@@ -612,5 +686,25 @@ mod tests {
         let fixed = far.replace(r#""nodes":[1,2]"#, r#""nodes":[1,13]"#);
         let err = extract("TOY", &parse_osm(&fixed).unwrap(), &Overrides::default()).unwrap_err();
         assert!(err.contains("stand '1' (node 10) is"), "{err}");
+    }
+
+    /// R1.17: a stand with no reachable taxiway is named, and the other
+    /// errors still come out with it. A thin terminal wall stands between
+    /// stand 1 and the only taxiway; hold 13 is off the network.
+    #[test]
+    fn stand_without_a_taxiway_is_named_with_the_other_errors() {
+        let walled = toy().replace(
+            r#"{"type":"way","id":100,"#,
+            r#"{"type":"node","id":20,"lat":0.0001,"lon":0.0002},
+          {"type":"node","id":21,"lat":0.0005,"lon":0.0002},
+          {"type":"node","id":22,"lat":0.0005,"lon":0.00025},
+          {"type":"node","id":23,"lat":0.0001,"lon":0.00025},
+          {"type":"way","id":102,"nodes":[20,21,22,23,20],"tags":{"aeroway":"terminal"}},
+          {"type":"way","id":100,"#,
+        );
+        let err = extract("TOY", &parse_osm(&walled).unwrap(), &Overrides::default()).unwrap_err();
+        assert!(err.contains("stand '1'") && err.contains("no taxiway"), "{err}");
+        assert!(err.contains("holding point 13 is not on any taxiway"), "{err}");
+        assert!(!err.contains("stand '2'") && !err.contains("stand '3'"), "{err}");
     }
 }

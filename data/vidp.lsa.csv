@@ -1,0 +1,28 @@
+# LSA (localizer sensitive area) per landing end, from the AD 2.24 ILS CAT III critical and sensitive
+# area charts in AIP India AMDT 10/2026 (eAIP v2-10-2026), vector paths read by research/work/vidp/lsa_from_charts.py.
+# along_m: from the sim's runway end the arrival crosses first (conflict.rs Dir.from), along the runway axis.
+# left_m / right_m: the LSA edge, left and right of the centreline as the landing aircraft sees it.
+# Scale: the chart's black runway fill mapped onto the OSM runway, end to end. Straight lines between stations.
+end,along_m,left_m,right_m,grade
+10,-104,179,181,chart vector
+10,2736,181,181,chart vector
+10,4337,54,54,chart vector
+28,-160,182,182,chart vector
+28,2764,183,183,chart vector
+28,4365,54,55,chart vector
+11L,431,192,193,chart vector
+11L,3380,194,192,chart vector
+11L,3387,194,191,chart vector
+11L,5121,58,58,chart vector
+29R,503,192,192,chart vector
+29R,504,191,192,chart vector
+29R,3381,192,192,chart vector
+29R,3388,190,191,chart vector
+29R,5121,60,56,chart vector
+11R,246,238,240,chart vector
+11R,3325,239,239,chart vector
+11R,4217,160,162,chart vector
+11R,5106,84,85,chart vector
+29L,1420,214,214,chart vector
+29L,3564,215,213,chart vector
+29L,5342,84,83,chart vector

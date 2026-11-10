@@ -53,24 +53,53 @@ impl Score {
     }
 }
 
+/// A departure on stand, past the grace after it fell due.
+/// Counts from the first tick after the grace: 70 s on stand is 10 s, 200 ticks.
+fn stand_ready(w: &World, a: &Aircraft) -> bool {
+    a.ready.is_some_and(|r| w.tick > r + STAND_GRACE_S * u64::from(TICK_HZ))
+}
+
+/// Lined up with nothing to wait out. Waiting out a wake minimum or a busy
+/// runway is the rule, not delay, and not a request either.
+fn lined_up_free(w: &World, i: usize) -> bool {
+    w.wake_wait(i).is_none() && w.runway_blocker(i).is_none()
+}
+
 /// Does aircraft `i` wait on you this tick? `occupied[r]`: someone is on
 /// runway `r`.
 fn waiting(w: &World, i: usize, occupied: &[bool]) -> bool {
     let a: &Aircraft = &w.aircraft[i];
     match &a.phase {
-        // Counts from the first tick after the grace: 70 s on stand is 10 s, 200 ticks.
-        Phase::OnStand => a.ready.is_some_and(|r| w.tick > r + STAND_GRACE_S * u64::from(TICK_HZ)),
+        Phase::OnStand => stand_ready(w, a),
         Phase::Holding | Phase::HoldPosition => true,
         // Waiting while traffic uses the runway is the rule, not delay.
         Phase::HoldShort(name) => w.airport.runways.iter().position(|r| &r.name == name).is_some_and(|r| !occupied[r]),
-        // Waiting out a wake minimum or a busy runway is the rule too.
-        Phase::LinedUp(_) => w.wake_wait(i).is_none() && w.runway_blocker(i).is_none(),
+        Phase::LinedUp(_) => lined_up_free(w, i),
         Phase::GoAround(_) => matches!(a.went_around, Some(GoAround::Instructed | GoAround::NoClearance)),
         _ => false,
     }
 }
 
 impl World {
+    /// Has aircraft `i` asked for something: a push (ready on stand), a
+    /// taxi clearance (holding), takeoff (lined up, runway free), or landing
+    /// (on final, not cleared)? The strip flashes until you answer.
+    ///
+    /// Narrower than `waiting` on purpose. A hold you ordered (H), a hold
+    /// short of a runway in use, and a go-around you sent are waits you
+    /// caused or the rules caused, not requests.
+    pub fn requesting(&self, i: usize) -> bool {
+        let a = &self.aircraft[i];
+        match &a.phase {
+            Phase::OnStand => stand_ready(self, a),
+            Phase::Holding => true,
+            Phase::LinedUp(_) => lined_up_free(self, i),
+            // V2: under LVP, C must wait while the LSA is busy (A7).
+            Phase::Final(_) => !a.cleared_to_land && self.lsa_blocker(i).is_none(),
+            _ => false,
+        }
+    }
+
     /// Challenges: go-arounds the pilot or the weather caused.
     pub fn challenges(&self) -> usize {
         self.go_arounds.iter().filter(|g| g.why.challenge()).count()

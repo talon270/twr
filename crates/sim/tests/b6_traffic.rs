@@ -114,7 +114,9 @@ fn spacing_on_final_and_free_stands_with_nobody_at_the_controls() {
         let mut was_final = BTreeSet::new();
         let (mut entries, mut rejoins, mut most_queued, mut stands_full) = (0, 0, 0, 0);
         let spawn = -((FINAL_SPAWN_M * MDM_PER_M) as i64);
-        while w.tick < TICKS_PER_REAL_H {
+        // B10: 270 chart stands take longer to fill than OSM's 115, so run
+        // past the hour until the stand queue has been used (2 h at most).
+        while w.tick < TICKS_PER_REAL_H || (stands_full == 0 && w.tick < 2 * TICKS_PER_REAL_H) {
             let ga_before: BTreeSet<String> = w.aircraft.iter().filter(|a| matches!(a.phase, Phase::GoAround(_))).map(|a| a.callsign.clone()).collect();
             w.step_ticks(1);
             for i in 0..w.aircraft.len() {
@@ -146,7 +148,7 @@ fn spacing_on_final_and_free_stands_with_nobody_at_the_controls() {
             most_queued = most_queued.max(t.final_queue.len());
             stands_full = stands_full.max(t.stand_queue.len());
         }
-        println!("seed {seed}: {entries} onto final ({rejoins} rejoins after a go-around), final queue peaked at {most_queued}, stand queue at {stands_full}, incidents {}", w.monitor.incidents.len());
+        println!("seed {seed}: ran {:.2} real h; {entries} onto final ({rejoins} rejoins after a go-around), final queue peaked at {most_queued}, stand queue at {stands_full}, incidents {}", w.tick as f64 / TICKS_PER_REAL_H as f64, w.monitor.incidents.len());
         assert!(rejoins >= 50, "seed {seed}: the go-around path ran {rejoins} times");
         assert!(most_queued > 0 && stands_full > 0, "seed {seed}: both queues must have been used");
     }

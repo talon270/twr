@@ -35,7 +35,7 @@ def red_pixels_near(pg, x, y, radius=12):
 
 with sync_playwright() as pw:
     b = pw.chromium.launch()
-    pg = b.new_page(viewport={"width": 1500, "height": 950})
+    pg = b.new_page(viewport={"width": 1500, "height": 950}, color_scheme="dark")  # R1.15: first paint follows the system; these checks start dark
     errs, dialogs = [], []
     pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e)))
     pg.on("console", lambda m: m.type == "error" and errs.append(m.text))
@@ -53,6 +53,10 @@ with sync_playwright() as pw:
         return app(pg, f"a.index_of({cs!r})")
 
     def text(k, i):
+        # hint, notice and via moved to the panel under the map (step 2): they
+        # read as empty unless strip i is the selected one, as on the strip.
+        if k in ("hint", "notice", "via"):
+            return pg.evaluate("([k, i]) => document.getElementById('sel').dataset.i === String(i) ? document.getElementById('sel-' + k).textContent : ''", [k, i])
         return pg.text_content(f"#{k}{i}")
 
     def ff_until(cond, max_ticks=400_000, chunk=20):

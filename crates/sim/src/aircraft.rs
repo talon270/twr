@@ -10,6 +10,9 @@
 //!     exit taxiway to the vacate point; verbs C clear to land, G go
 //!     around, E pick the exit. A landing with no exit is B4's synthetic
 //!     arrival and stops on the runway
+//!   · ground control (C3): hold at a point and continue, reroute from a
+//!     node already passed, taxi speed, cross without stopping, backtrack.
+//!     Give way needs a second aircraft, so it lives on `World`
 //!
 //! An aircraft never enters a runway it was not cleared onto. Every route it
 //! receives is scanned for runway nodes, and it stops short of the first one
@@ -18,7 +21,7 @@
 
 use crate::airport::{Airport, EdgeKind};
 use crate::arrival::{self, brake_mdm, Exit, GoAround, DECISION_M, FINAL_SPAWN_M, GA_CIRCUIT_S};
-use crate::route::{Graph, Route};
+use crate::route::{Graph, Request, Route};
 use crate::TICK_HZ;
 
 /// Movement unit: milli-decimetres (0.1 mm). Integer, so a takeoff roll's
@@ -66,6 +69,74 @@ pub const LAND_DECEL_MDM: u64 = 40;
 /// class. MTOW is the conservative case; a lighter aircraft needs less.
 pub const MIN_TAKEOFF_RUN_M: u64 = 2_030;
 pub const MIN_TAKEOFF_RUN_HEAVY_M: u64 = 3_100;
+
+/// C3 taxi speeds per tick at 20 Hz: slow 5 m/s, expedite 15 m/s. Both
+/// `authored`; normal is TAXI_MDM_PER_TICK (10 m/s).
+pub const SLOW_MDM_PER_TICK: u64 = 2_500;
+pub const EXPEDITE_MDM_PER_TICK: u64 = 7_500;
+/// C3 give way: the giver stops this far short of the junction, along its
+/// route. Over BODY_M (20 m), so the passing aircraft's G1 check does not
+/// see a stopped giver at all, and over GROUND_MIN_M (45 m) for an aircraft
+/// that turns onto the giver's own route. `authored`.
+pub const GIVE_WAY_GAP_M: u64 = 60;
+
+/// C3: the taxi speed you gave. It applies to taxi and line-up (backtrack
+/// included) and stays with the aircraft until you change it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TaxiSpeed {
+    Slow,
+    Normal,
+    Expedite,
+}
+
+impl TaxiSpeed {
+    pub fn mdm_per_tick(self) -> u64 {
+        match self {
+            TaxiSpeed::Slow => SLOW_MDM_PER_TICK,
+            TaxiSpeed::Normal => TAXI_MDM_PER_TICK,
+            TaxiSpeed::Expedite => EXPEDITE_MDM_PER_TICK,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            TaxiSpeed::Slow => "slow",
+            TaxiSpeed::Normal => "normal",
+            TaxiSpeed::Expedite => "expedite",
+        }
+    }
+
+    pub fn slower(self) -> Option<TaxiSpeed> {
+        match self {
+            TaxiSpeed::Expedite => Some(TaxiSpeed::Normal),
+            TaxiSpeed::Normal => Some(TaxiSpeed::Slow),
+            TaxiSpeed::Slow => None,
+        }
+    }
+
+    pub fn faster(self) -> Option<TaxiSpeed> {
+        match self {
+            TaxiSpeed::Slow => Some(TaxiSpeed::Normal),
+            TaxiSpeed::Normal => Some(TaxiSpeed::Expedite),
+            TaxiSpeed::Expedite => None,
+        }
+    }
+}
+
+/// C3: where a taxiing aircraft stops before the end of its route. A hold
+/// point (J) stops at the node itself and then waits for Enter; a give way
+/// (Y) stops GIVE_WAY_GAP_M short of the junction and the world releases it
+/// once the other aircraft has passed (`World::ground_tick`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stop {
+    /// The hold point, or the junction given way at.
+    pub node: u32,
+    /// Route distance to stop at, mdm. Never behind the aircraft: every new
+    /// route drops the stop, so `pos_mdm` cannot pass it unnoticed.
+    pub at_mdm: u64,
+    /// Giving way to this callsign.
+    pub give_way: Option<String>,
+}
 
 pub fn min_takeoff_run_m(wake: Wake) -> u64 {
     match wake {
@@ -159,10 +230,47 @@ pub struct Aircraft {
     pub pilot_ga: Option<(u64, &'static str)>,
     /// B9: a windshear go-around at this distance out, gusty shifts only.
     pub weather_ga: Option<u64>,
+    /// No landing clearance by this distance out and the aircraft goes
+    /// around: DECISION_M, or 2 NM under LVP (V1). The world sets it each
+    /// time the aircraft comes onto final.
+    pub decide_mdm: u64,
     /// Why the last go-around happened.
     pub went_around: Option<GoAround>,
     /// Ticks left on the circuit after a go-around has left the runway.
     pub circuit: u64,
+    /// Came in on final: it shuts down on its stand and leaves the game.
+    /// Per aircraft, not per traffic stream, so Practice's arrival leaves too.
+    pub arrival: bool,
+    /// The tick an arrival was first seen on a stand; its shut-down timer.
+    pub stand_since: Option<u64>,
+    /// C2: route distance where a tail push stops, mdm. None for a push that
+    /// ends at the junction (`push`).
+    pub push_to: Option<u64>,
+    /// C3: a hold point or a give way ahead on the route.
+    pub stop: Option<Stop>,
+    /// C3: taxi and line-up speed.
+    pub taxi_speed: TaxiSpeed,
+    /// C3: X given before the hold: the crossing (route index of its first
+    /// runway node) and its runway. Crossed without stopping if the runway
+    /// is clear when the aircraft reaches the hold line.
+    pub cross_ahead: Option<(usize, String)>,
+    /// C3: backtracking to line up facing this designator. Set from B until
+    /// the aircraft is lined up at the far end.
+    pub backtrack: Option<String>,
+}
+
+/// C2: one way to push back. Down the stand link, then tail-first along a
+/// taxilane for one aircraft length, ending facing the other way.
+#[derive(Debug, Clone)]
+pub struct TailOption {
+    /// "tail W": the compass point the tail ends up toward.
+    pub label: String,
+    /// The taxiway the tail goes down; empty if the map leaves it unnamed.
+    pub taxiway: String,
+    /// Stand, junction, then the nodes the tail follows.
+    pub route: Route,
+    /// Route distance where the push stops, mdm.
+    pub push_mdm: u64,
 }
 
 impl Aircraft {
@@ -188,8 +296,16 @@ impl Aircraft {
             cleared_to_land: false,
             pilot_ga: None,
             weather_ga: None,
+            decide_mdm: DECISION_M * MDM_PER_M,
             went_around: None,
             circuit: 0,
+            arrival: false,
+            stand_since: None,
+            push_to: None,
+            stop: None,
+            taxi_speed: TaxiSpeed::Normal,
+            cross_ahead: None,
+            backtrack: None,
         }
     }
 
@@ -197,7 +313,7 @@ impl Aircraft {
     /// default exit. None if `desig` is not a landing direction here.
     pub fn on_final(callsign: &str, wake: Wake, desig: &str, ap: &Airport, g: &Graph) -> Option<Aircraft> {
         let (x, route) = arrival::default_exit(ap, g, desig)?;
-        let mut a = Aircraft { wake, ..Aircraft::parked(callsign, route.nodes[0]) };
+        let mut a = Aircraft { wake, arrival: true, ..Aircraft::parked(callsign, route.nodes[0]) };
         a.set_route(route, ap, g);
         a.limit = None;
         a.exit = Some(x);
@@ -309,7 +425,7 @@ impl Aircraft {
                     self.go_around_now(why);
                 } else if self.weather_ga.is_some_and(|at| out <= at) {
                     self.go_around_now(GoAround::Weather("windshear"));
-                } else if !self.cleared_to_land && out <= DECISION_M * MDM_PER_M {
+                } else if !self.cleared_to_land && out <= self.decide_mdm {
                     self.go_around_now(GoAround::NoClearance);
                 } else {
                     self.air_mdm = (self.air_mdm + LAND_MDM_PER_TICK as i64).min(0);
@@ -340,7 +456,7 @@ impl Aircraft {
         }
         let v = match &self.phase {
             Phase::Pushback => PUSH_MDM_PER_TICK,
-            Phase::Taxi | Phase::LineUp(_) => TAXI_MDM_PER_TICK,
+            Phase::Taxi | Phase::LineUp(_) => self.taxi_speed.mdm_per_tick(),
             Phase::TakeoffRoll(_) | Phase::Airborne(_) => {
                 self.speed_mdm = (self.speed_mdm + TAKEOFF_ACCEL_MDM).min(CLIMB_MDM_PER_TICK);
                 self.speed_mdm
@@ -364,17 +480,28 @@ impl Aircraft {
             }
             _ => return,
         };
-        let go = match &self.limit {
-            Some((lim, _)) => v.min(lim - self.pos_mdm),
-            None => v,
-        };
+        let stop = self.stop.as_ref().filter(|_| self.phase == Phase::Taxi).map(|s| s.at_mdm);
+        let cap = self.limit.as_ref().map(|(lim, _)| *lim).into_iter().chain(self.push_to).chain(stop).min();
+        let go = cap.map_or(v, |c| v.min(c - self.pos_mdm));
         self.advance(go, g);
+        if self.push_to == Some(self.pos_mdm) {
+            self.end_tail_push(g);
+            return;
+        }
 
         if let Some((lim, rwy)) = &self.limit {
             if self.pos_mdm == *lim {
                 self.phase = Phase::HoldShort(rwy.clone());
                 return;
             }
+        }
+        // C3: at a hold point, wait for Enter; at a give way, for the world.
+        if self.phase == Phase::Taxi && stop == Some(self.pos_mdm) {
+            self.phase = Phase::HoldPosition;
+            if self.stop.as_ref().is_some_and(|s| s.give_way.is_none()) {
+                self.stop = None;
+            }
+            return;
         }
         if let Phase::TakeoffRoll(d) = &self.phase {
             if self.speed_mdm >= ROTATE_MDM_PER_TICK {
@@ -387,9 +514,20 @@ impl Aircraft {
             self.phase = Phase::Taxi;
             self.speed_mdm = TAXI_MDM_PER_TICK;
         }
+        // C3 backtrack. At the entry: roll back down the runway to its end.
+        // At the end (the route is runway): line up below, as any LineUp.
+        if !self.on_edge()
+            && matches!(self.phase, Phase::LineUp(_))
+            && let Some(d) = self.backtrack.take()
+            && !self.on_runway_route(ap)
+            && let Some(run) = backtrack_run(ap, g, self.route.end(), &d)
+        {
+            self.start_backtrack(run, d, ap, g);
+            return;
+        }
         if !self.on_edge() {
             self.phase = match std::mem::replace(&mut self.phase, Phase::Holding) {
-                Phase::LineUp(_) => match g.runway_run(ap, self.route.end()) {
+                Phase::LineUp(_) => match g.runway_run_facing(ap, self.route.end(), self.assigned) {
                     Some((run, d)) => {
                         self.line_up_on(run, ap, g);
                         Phase::LinedUp(d)
@@ -407,6 +545,26 @@ impl Aircraft {
                 _ => Phase::Holding,
             };
         }
+    }
+
+    /// The tail push has gone its length. The aircraft now sits on the last
+    /// edge it was pushed along, facing back down it (toward the junction),
+    /// so a taxi from the node ahead leaves without a U-turn, and the edge
+    /// behind it is the one a taxi may not return along.
+    fn end_tail_push(&mut self, g: &Graph) {
+        let (k, along) = if self.on_edge() { (self.leg, self.along_mdm) } else { (self.route.edges.len() - 1, u64::MAX) };
+        let (e, near, far) = (self.route.edges[k], self.route.nodes[k], self.route.nodes[k + 1]);
+        let len = u64::from(g.len_dm[e as usize]) * MDM_PER_DM;
+        let from_far = len - along.min(len);
+        self.route = Route { nodes: vec![far, near], edges: vec![e] };
+        self.leg = 0;
+        self.along_mdm = from_far;
+        self.pos_mdm = from_far;
+        self.speed_mdm = 0;
+        self.limit = None;
+        self.cleared.clear();
+        self.push_to = None;
+        self.phase = Phase::Holding;
     }
 
     fn advance(&mut self, mut go: u64, g: &Graph) {
@@ -438,7 +596,30 @@ impl Aircraft {
         self.speed_mdm = 0;
         self.cleared.clear();
         self.exit = None;
+        self.stop = None;
+        self.cross_ahead = None;
         self.limit = self.next_hold(ap, g);
+    }
+
+    /// Route distance of `route.nodes[k]`, mdm.
+    pub fn dist_to(&self, k: usize, g: &Graph) -> u64 {
+        self.route.edges[..k].iter().map(|&e| u64::from(g.len_dm[e as usize]) * MDM_PER_DM).sum()
+    }
+
+    /// The route runs along a runway: a backtrack, or a lined-up run.
+    pub fn on_runway_route(&self, ap: &Airport) -> bool {
+        self.route.edges.first().is_some_and(|&e| ap.edges[e as usize].kind == EdgeKind::Runway)
+    }
+
+    /// Roll along `run` (runway edges, against `d`) to the runway's end.
+    fn start_backtrack(&mut self, run: Route, d: String, ap: &Airport, g: &Graph) {
+        let rwy = ap.runways[g.runway_at[run.nodes[0] as usize].expect("a runway run")].name.clone();
+        self.set_route(run, ap, g);
+        // All runway: no hold-short of its own, as for a lined-up run.
+        self.limit = None;
+        self.start_rolling();
+        self.phase = Phase::LineUp(rwy);
+        self.backtrack = Some(d);
     }
 
     /// Record the first edge of a fresh route as entered. Called once, when
@@ -482,6 +663,88 @@ impl Aircraft {
         Ok(())
     }
 
+    /// C2: the ways this aircraft can push back from its stand. One per
+    /// taxilane at the stand link's junction; each follows the lane as
+    /// straight ahead as it goes until the aircraft's length is used up (the
+    /// edges at IGI stands are short: median 38 m, 252 of 525 under an A320's
+    /// length), or the lane ends. Lanes that would trap the aircraft facing
+    /// a dead end are left out; with fewer than two lanes left, none are offered.
+    pub fn tail_options(&self, ap: &Airport, g: &Graph) -> Vec<TailOption> {
+        let Some((ei, junction)) = self.stand_link(ap) else { return Vec::new() };
+        let stand = self.route.end();
+        let want = (crate::shape::dims(self.type_code).0 * MDM_PER_M as f64) as u64;
+        let len = |e: u32| u64::from(g.len_dm[e as usize]) * MDM_PER_DM;
+        let pos = |n: u32| (f64::from(ap.nodes[n as usize].x), f64::from(ap.nodes[n as usize].y));
+        // Compass bearing of travel from node p to node q, degrees, 0 = north.
+        let bearing = |p: u32, q: u32| {
+            let (a, b) = (pos(p), pos(q));
+            (b.0 - a.0).atan2(b.1 - a.1).to_degrees().rem_euclid(360.0)
+        };
+        let turn = |h1: f64, h2: f64| {
+            let d = (h2 - h1).rem_euclid(360.0);
+            d.min(360.0 - d)
+        };
+        let lane = |e: u32| ap.edges[e as usize].kind != EdgeKind::StandLink;
+        let lanes: Vec<(u32, u32)> = g.adj[junction as usize].iter().copied().filter(|&(e, _)| e != ei && lane(e)).collect();
+        let exit = ap.runway_exits().first().copied();
+        let mut out = Vec::new();
+        for (e0, v0) in lanes {
+            let (mut nodes, mut edges, mut got) = (vec![stand, junction, v0], vec![ei, e0], len(e0));
+            while got < want {
+                let (cur, prev, last) = (nodes[nodes.len() - 1], nodes[nodes.len() - 2], edges[edges.len() - 1]);
+                let h = bearing(prev, cur);
+                let next = g.adj[cur as usize]
+                    .iter()
+                    .filter(|&&(e, v)| e != last && lane(e) && !nodes.contains(&v))
+                    .min_by(|a, b| turn(h, bearing(cur, a.1)).total_cmp(&turn(h, bearing(cur, b.1))));
+                let Some(&(e, v)) = next else { break };
+                nodes.push(v);
+                edges.push(e);
+                got += len(e);
+            }
+            // A lane that leaves the nose pointing at a dead end traps the
+            // aircraft: from the node ahead, with the pushed edge off limits,
+            // it must still be able to reach a runway.
+            let (ahead, pushed) = (nodes[nodes.len() - 2], edges[edges.len() - 1]);
+            let free = exit.is_some_and(|to| g.plan(ap, &Request { from: ahead, to, via: Vec::new(), avoid: vec![pushed], ..Default::default() }).is_some());
+            if !free {
+                continue;
+            }
+            const POINTS: [&str; 8] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+            let b = bearing(junction, nodes[nodes.len() - 1]);
+            out.push(TailOption {
+                label: format!("tail {}", POINTS[((b + 22.5) / 45.0) as usize % 8]),
+                taxiway: ap.edges[e0 as usize].name.clone(),
+                route: Route { nodes, edges },
+                push_mdm: len(ei) + got.min(want),
+            });
+        }
+        // Fewer than two ways out is no choice: `push` stops at the junction.
+        if out.len() < 2 {
+            out.clear();
+        }
+        out
+    }
+
+    /// The edge joining this aircraft's stand to a taxiway, and the taxiway end.
+    fn stand_link(&self, ap: &Airport) -> Option<(u32, u32)> {
+        let stand = self.route.end();
+        let (ei, e) = ap.edges.iter().enumerate().find(|(_, e)| e.kind == EdgeKind::StandLink && (e.a == stand || e.b == stand))?;
+        Some((ei as u32, if e.a == stand { e.b } else { e.a }))
+    }
+
+    /// C2: push back along `opt`.
+    pub fn push_tail(&mut self, opt: &TailOption, ap: &Airport, g: &Graph) -> Result<(), String> {
+        if self.phase != Phase::OnStand {
+            return Err("only an aircraft on stand can push back".into());
+        }
+        self.set_route(opt.route.clone(), ap, g);
+        self.start_rolling();
+        self.push_to = Some(opt.push_mdm);
+        self.phase = Phase::Pushback;
+        Ok(())
+    }
+
     /// Taxi along `route`, exactly as given. On an edge, the aircraft
     /// finishes it first, so the route must start where that edge ends.
     pub fn taxi(&mut self, route: Route, ap: &Airport, g: &Graph) -> Result<(), String> {
@@ -501,9 +764,12 @@ impl Aircraft {
             _ => {}
         }
         route.check(ap)?;
-        if route.nodes[0] != self.next_node() {
-            return Err(format!("route starts at node {}, aircraft continues from {}", route.nodes[0], self.next_node()));
+        let route = self.catch_up(route)?;
+        if self.on_edge() && route.edges.first() == self.route.edges.get(self.leg) {
+            return Err("that is a U-turn: an aircraft can't turn back along the edge it is on".into());
         }
+        self.stop = None;
+        self.cross_ahead = None;
         if self.on_edge() {
             // Keep the current edge and where the aircraft is on it.
             let (n, e) = (self.route.nodes[self.leg], self.route.edges[self.leg]);
@@ -511,7 +777,10 @@ impl Aircraft {
             self.route = Route { nodes: [&[n][..], &route.nodes].concat(), edges: [&[e][..], &route.edges].concat() };
             self.leg = 0;
             self.pos_mdm = along;
-            self.cleared.clear();
+            // A crossing whose hold line is already behind was cleared, or
+            // the aircraft would have stopped at it: keep it cleared. Clearing
+            // it here parked a crosser on 10/28 "holding short" (R1.1).
+            self.cleared = crossings(ap, g, &self.route, 0, 0).into_iter().filter(|c| c.lim < self.pos_mdm).map(|c| c.first).collect();
             self.limit = self.next_hold(ap, g);
         } else {
             self.set_route(route, ap, g);
@@ -521,18 +790,117 @@ impl Aircraft {
         Ok(())
     }
 
-    /// H: stop where you are; H again: continue.
+    /// C3 reroute: a route planned from a node the aircraft has since rolled
+    /// through still applies when the aircraft got there along the route's
+    /// own first edges; it is cut to start where the aircraft now continues.
+    /// At 10 m/s the median IGI edge (38 m) takes 1.3 s of real time, so a
+    /// preview built while moving is often one node stale by Enter. Any
+    /// other start is refused: the aircraft went another way.
+    fn catch_up(&self, route: Route) -> Result<Route, String> {
+        let next = self.next_node();
+        if route.nodes[0] == next {
+            return Ok(route);
+        }
+        // Edges rolled into, up to and including the one ending at `next`.
+        let done = if self.on_edge() { self.leg + 1 } else { self.leg };
+        for k in 1..route.nodes.len() {
+            if route.nodes[k] == next && k <= done && self.route.edges[done - k..done] == route.edges[..k] {
+                return Ok(Route { nodes: route.nodes[k..].to_vec(), edges: route.edges[k..].to_vec() });
+            }
+        }
+        Err(format!("route starts at node {}, aircraft continues from {}: plan again", route.nodes[0], next))
+    }
+
+    /// H: stop where you are; H again: continue. Either way it replaces any
+    /// hold point or give way: a give way released later must not undo an H.
     pub fn hold(&mut self) -> Result<(), String> {
         self.phase = match self.phase {
             Phase::Taxi => Phase::HoldPosition,
             Phase::HoldPosition => Phase::Taxi,
             _ => return Err("only a taxiing aircraft can hold position".into()),
         };
+        self.stop = None;
+        Ok(())
+    }
+
+    /// C3, Enter: continue. Ends a hold position (H, a hold point, or a give
+    /// way not yet released) and drops a hold point or give way still ahead.
+    pub fn resume(&mut self) -> Result<(), String> {
+        match &self.phase {
+            Phase::HoldPosition => self.phase = Phase::Taxi,
+            Phase::Taxi if self.stop.is_some() => {}
+            Phase::HoldShort(r) => return Err(format!("holding short of {r}: cross (X) or line up (L)")),
+            _ => return Err("nothing to continue: not holding".into()),
+        }
+        self.stop = None;
+        Ok(())
+    }
+
+    /// C3: nodes a hold point can be set at. Ahead on the route, before its
+    /// end (it stops there anyway), and off the runways (their hold-short is
+    /// automatic).
+    pub fn hold_points(&self, g: &Graph) -> Vec<u32> {
+        if !matches!(self.phase, Phase::Taxi | Phase::HoldPosition) || !self.on_edge() {
+            return Vec::new();
+        }
+        let last = self.route.nodes.len() - 1;
+        self.route.nodes[self.leg + 1..last].iter().copied().filter(|&n| g.runway_at[n as usize].is_none()).collect()
+    }
+
+    /// C3, J: stop at `node`, ahead on the route, and wait for Enter (or H,
+    /// or a new T). Replaces any hold point or give way already set.
+    pub fn hold_at(&mut self, node: u32, g: &Graph) -> Result<(), String> {
+        if !matches!(self.phase, Phase::Taxi | Phase::HoldPosition) || !self.on_edge() {
+            return Err("only a taxiing aircraft can hold at a point".into());
+        }
+        let last = self.route.nodes.len() - 1;
+        let Some(k) = (self.leg + 1..=last).find(|&k| self.route.nodes[k] == node) else {
+            return Err(format!("node {node} is not ahead on the route"));
+        };
+        if k == last {
+            return Err("the route ends there: it stops there anyway".into());
+        }
+        if g.runway_at[node as usize].is_some() {
+            return Err("that point is on a runway: it holds short of runways anyway".into());
+        }
+        self.stop = Some(Stop { node, at_mdm: self.dist_to(k, g), give_way: None });
+        Ok(())
+    }
+
+    /// C3: set the taxi speed. Allowed on the ground from holding to lined
+    /// up, so it can be set before T or before a backtrack.
+    pub fn set_taxi_speed(&mut self, s: TaxiSpeed) -> Result<(), String> {
+        if !matches!(self.phase, Phase::Holding | Phase::Taxi | Phase::HoldPosition | Phase::HoldShort(_) | Phase::LineUp(_) | Phase::LinedUp(_)) {
+            return Err("taxi speed is for an aircraft taxiing or about to".into());
+        }
+        if self.taxi_speed == s {
+            return Err(format!("already taxiing at {}", s.name()));
+        }
+        self.taxi_speed = s;
+        Ok(())
+    }
+
+    /// C3, X before the hold line: cross the next runway without stopping if
+    /// it is clear when the aircraft gets there. The world judges that on
+    /// arrival (`World::ground_tick`); if busy, the aircraft holds short as
+    /// always and the clearance lapses, so X is needed again.
+    pub fn cross_ahead(&mut self, ap: &Airport, g: &Graph) -> Result<(), String> {
+        if !matches!(self.phase, Phase::Taxi | Phase::HoldPosition) {
+            return Err("not holding short of a runway".into());
+        }
+        let c = self.held_crossing(ap, g).ok_or("no runway ahead")?;
+        if c.last == self.route.nodes.len() - 1 {
+            return Err(format!("the route ends on {}: line up (L) or taxi elsewhere", c.name));
+        }
+        if self.cross_ahead.as_ref().is_some_and(|(f, _)| *f == c.first) {
+            return Err(format!("already cleared to cross {} if clear", c.name));
+        }
+        self.cross_ahead = Some((c.first, c.name));
         Ok(())
     }
 
     /// The crossing this hold-short guards: the next one not yet cleared.
-    fn held_crossing(&self, ap: &Airport, g: &Graph) -> Option<Crossing> {
+    pub(crate) fn held_crossing(&self, ap: &Airport, g: &Graph) -> Option<Crossing> {
         crossings(ap, g, &self.route, 0, 0).into_iter().find(|c| c.last > self.leg && !self.cleared.contains(&c.first))
     }
 
@@ -553,33 +921,52 @@ impl Aircraft {
     /// stopped at a holding point beside one. Checks everything before
     /// changing anything, so a refusal leaves the aircraft as it was.
     pub fn line_up(&mut self, ap: &Airport, g: &Graph) -> Result<(), String> {
-        // A vacated arrival holds within reach of the runway it left, which
-        // B3's holding-point line-up would accept (found by verify_b5).
-        if self.exit.is_some() {
-            return Err("an arrival taxis to a stand (T)".into());
-        }
-        let (rwy, entry, approach) = match &self.phase {
-            Phase::HoldShort(rwy) => {
-                let c = self.held_crossing(ap, g).ok_or("no runway ahead")?;
-                if c.last != self.route.nodes.len() - 1 {
-                    return Err(format!("the route crosses {rwy}: cross (X) instead"));
-                }
-                (rwy.clone(), self.route.end(), None)
-            }
-            Phase::Holding => {
-                let r = g.nearest_runway(self.route.end(), HOLD_SEARCH_M * 10).ok_or("no runway within reach")?;
-                let entry = r.end();
-                let rwy = ap.runways[g.runway_at[entry as usize].expect("nearest_runway ends on one")].name.clone();
-                (rwy, entry, Some(r))
-            }
-            _ => return Err("hold short of a runway first".into()),
-        };
-        let (run, d) = g.runway_run(ap, entry).ok_or("no runway here")?;
+        let (rwy, entry, approach) = self.line_up_target(ap, g)?;
+        let (run, d) = g.runway_run_facing(ap, entry, self.assigned).ok_or("no runway here")?;
         let run_m = g.run_len_dm(&run) / 10;
         let need = min_takeoff_run_m(self.wake);
         if run_m < need {
             return Err(format!("only {run_m} m of {d} ahead from here; need {need}"));
         }
+        self.roll_to_entry(approach, ap, g);
+        if self.on_edge() {
+            self.phase = Phase::LineUp(rwy);
+        } else {
+            // Already at the entry node: line up at once.
+            self.line_up_on(run, ap, g);
+            self.phase = Phase::LinedUp(d);
+        }
+        Ok(())
+    }
+
+    /// Where L (and B) would take the aircraft onto a runway: the runway's
+    /// name, the entry node, and the short route to it from a holding point.
+    fn line_up_target(&self, ap: &Airport, g: &Graph) -> Result<(String, u32, Option<Route>), String> {
+        // A vacated arrival holds within reach of the runway it left, which
+        // B3's holding-point line-up would accept (found by verify_b5).
+        if self.exit.is_some() {
+            return Err("an arrival taxis to a stand (T)".into());
+        }
+        match &self.phase {
+            Phase::HoldShort(rwy) => {
+                let c = self.held_crossing(ap, g).ok_or("no runway ahead")?;
+                if c.last != self.route.nodes.len() - 1 {
+                    return Err(format!("the route crosses {rwy}: cross (X) instead"));
+                }
+                Ok((rwy.clone(), self.route.end(), None))
+            }
+            Phase::Holding => {
+                let r = g.nearest_runway(self.route.end(), HOLD_SEARCH_M * 10).ok_or("no runway within reach")?;
+                let entry = r.end();
+                let rwy = ap.runways[g.runway_at[entry as usize].expect("nearest_runway ends on one")].name.clone();
+                Ok((rwy, entry, Some(r)))
+            }
+            _ => Err("hold short of a runway first".into()),
+        }
+    }
+
+    /// Take `approach` (if any) and clear the crossing the route ends on.
+    fn roll_to_entry(&mut self, approach: Option<Route>, ap: &Airport, g: &Graph) {
         if let Some(r) = approach {
             self.set_route(r, ap, g);
             self.start_rolling();
@@ -590,12 +977,42 @@ impl Aircraft {
             self.cleared.push(c.first);
         }
         self.limit = self.next_hold(ap, g);
-        if self.on_edge() {
-            self.phase = Phase::LineUp(rwy);
-        } else {
-            // Already at the entry node: line up at once.
-            self.line_up_on(run, ap, g);
-            self.phase = Phase::LinedUp(d);
+    }
+
+    /// C3, B: backtrack. Enter the runway, taxi along it against the
+    /// departure direction to its end, turn there and line up facing the
+    /// whole length. Allowed where L is (held short where the route ends on
+    /// the runway, or at a holding point) and when already lined up. The
+    /// departure direction is the one L would face: the assigned runway if
+    /// this is it, else the longer way. Refused at the runway's end, and when
+    /// even the whole length is too short for the type.
+    pub fn backtrack(&mut self, ap: &Airport, g: &Graph) -> Result<(), String> {
+        let (entry, d, ahead, approach) = match &self.phase {
+            Phase::LinedUp(d) => (self.route.nodes[0], d.clone(), self.route.clone(), None),
+            _ => {
+                let (_, entry, approach) = self.line_up_target(ap, g)?;
+                let (run, d) = g.runway_run_facing(ap, entry, self.assigned).ok_or("no runway here")?;
+                (entry, d, run, Some(approach))
+            }
+        };
+        let back = backtrack_run(ap, g, entry, &d).ok_or(format!("already at the end of {d}: line up (L)"))?;
+        let full_m = (g.run_len_dm(&back) + g.run_len_dm(&ahead)) / 10;
+        let need = min_takeoff_run_m(self.wake);
+        if full_m < need {
+            return Err(format!("{d} is {full_m} m end to end; need {need}"));
+        }
+        match approach {
+            None => self.start_backtrack(back, d, ap, g),
+            Some(approach) => {
+                self.roll_to_entry(approach, ap, g);
+                if self.on_edge() {
+                    let rwy = ap.runways[g.runway_at[entry as usize].expect("an entry")].name.clone();
+                    self.phase = Phase::LineUp(rwy);
+                    self.backtrack = Some(d);
+                } else {
+                    self.start_backtrack(back, d, ap, g);
+                }
+            }
         }
         Ok(())
     }
@@ -610,9 +1027,19 @@ impl Aircraft {
 
     /// Keys whose verb would succeed now, for the strip's hints. Built by
     /// asking each verb on a copy, so a hint can never promise a refusal.
+    /// One copy without the trail, which only grows and no verb reads, and a
+    /// fresh one only after a verb succeeds: every verb refuses before it
+    /// changes anything. It cloned the whole aircraft 7 times a call (R1.20).
     pub fn verbs(&self, ap: &Airport, g: &Graph) -> Vec<char> {
         let mut out = Vec::new();
-        let ok = |f: &dyn Fn(&mut Aircraft) -> Result<(), String>| f(&mut self.clone()).is_ok();
+        let mut s = self.scratch();
+        let mut ok = |f: &dyn Fn(&mut Aircraft) -> Result<(), String>| {
+            let yes = f(&mut s).is_ok();
+            if yes {
+                s = self.scratch();
+            }
+            yes
+        };
         if ok(&|a| a.push(ap, g)) {
             out.push('P');
         }
@@ -638,10 +1065,51 @@ impl Aircraft {
         if ok(&|a| a.go_around()) {
             out.push('G');
         }
-        if matches!(self.phase, Phase::Final(_) | Phase::Landing(_)) && self.exit.is_some() {
+        // E only when another exit would be accepted (R1.24): past the
+        // braking point of every later one, E led only to refusals.
+        if let (Phase::Final(d) | Phase::Landing(d), Some(cur)) = (&self.phase, &self.exit)
+            && arrival::exits(ap, g, d).iter().any(|(x, _)| x.node != cur.node && self.exit_room(x).is_ok())
+        {
             out.push('E');
         }
         out
+    }
+
+    /// A copy to try verbs on: every field but the trail. Listed in full,
+    /// so a new field fails to compile here rather than go missing.
+    pub(crate) fn scratch(&self) -> Aircraft {
+        let Aircraft { callsign, wake, type_code, assigned, ready, phase, route, leg, along_mdm, pos_mdm, speed_mdm, limit, cleared, trail: _, exit, air_mdm, cleared_to_land, pilot_ga, weather_ga, decide_mdm, went_around, circuit, arrival, stand_since, push_to, stop, taxi_speed, cross_ahead, backtrack } = self;
+        Aircraft {
+            callsign: callsign.clone(),
+            wake: *wake,
+            type_code,
+            assigned: *assigned,
+            ready: *ready,
+            phase: phase.clone(),
+            route: route.clone(),
+            leg: *leg,
+            along_mdm: *along_mdm,
+            pos_mdm: *pos_mdm,
+            speed_mdm: *speed_mdm,
+            limit: limit.clone(),
+            cleared: cleared.clone(),
+            trail: Vec::new(),
+            exit: exit.clone(),
+            air_mdm: *air_mdm,
+            cleared_to_land: *cleared_to_land,
+            pilot_ga: *pilot_ga,
+            weather_ga: *weather_ga,
+            decide_mdm: *decide_mdm,
+            went_around: *went_around,
+            circuit: *circuit,
+            arrival: *arrival,
+            stand_since: *stand_since,
+            push_to: *push_to,
+            stop: stop.clone(),
+            taxi_speed: *taxi_speed,
+            cross_ahead: cross_ahead.clone(),
+            backtrack: backtrack.clone(),
+        }
     }
 
     /// C: cleared to land. Only on final; never refused for separation.
@@ -680,20 +1148,26 @@ impl Aircraft {
             let reverse = arrival::candidates(ap, g, &d).into_iter().any(|c| c.node == node);
             return Err(if reverse { format!("that exit turns back against {d}") } else { format!("not an exit off {d}") });
         };
+        self.exit_room(&x)?;
+        // Same run from the threshold up to either exit, so the aircraft's
+        // place on it (leg, along, pos) stays valid.
+        self.route = route;
+        self.exit = Some(x);
+        Ok(())
+    }
+
+    /// Is exit `x` ahead with room to slow for it? On final the aircraft is
+    /// still to touch down at the threshold.
+    fn exit_room(&self, x: &Exit) -> Result<(), String> {
         let pos = self.pos_mdm;
         if x.at_mdm <= pos {
             return Err(format!("{} is behind", x.label()));
         }
         let need = brake_mdm(self.speed_mdm);
-        // On final the aircraft is still to touch down at the threshold.
         let ahead = x.at_mdm - pos;
         if ahead < need {
             return Err(format!("{} is {} m ahead; needs {} m to slow", x.label(), ahead / MDM_PER_M, need.div_ceil(MDM_PER_M)));
         }
-        // Same run from the threshold up to either exit, so the aircraft's
-        // place on it (leg, along, pos) stays valid.
-        self.route = route;
-        self.exit = Some(x);
         Ok(())
     }
 }
@@ -762,6 +1236,12 @@ pub fn crossings(ap: &Airport, g: &Graph, route: &Route, from_k: usize, start_md
         out.push(Crossing { lim, name: ap.runways[r].name.clone(), runway: r, first: k, last: k, exit: cum[k] + (cum[k] - lim) });
     }
     out
+}
+
+/// C3: the runway run from `at` against departure direction `d`: where a
+/// backtrack goes. None at the runway's end, where there is nothing behind.
+pub fn backtrack_run(ap: &Airport, g: &Graph, at: u32, d: &str) -> Option<Route> {
+    g.runway_runs(ap, at).into_iter().find(|(_, dd)| dd != d).map(|(r, _)| r)
 }
 
 /// Point at route distance `d_mdm`, metres east and north.

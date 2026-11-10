@@ -22,6 +22,12 @@
 //!     ten have a pilot go-around forced, on top of the world's own 5%
 //!     draw, so each kind of go-around happens often enough to count.
 //!     Vacated arrivals taxi to a free stand under the same reservation.
+//!   · LVP (PLAN-lvp.md step 9): C between LVP_CLEAR_M and 2 NM, and only
+//!     with the LSA empty; no G of its own, so a missed C is the world's
+//!     go-around at 2 NM. A taxiing aircraft stops short of an LSA while an
+//!     arrival is on final for that end or rolling on it, and goes on when
+//!     neither is. The world's own spawn gate (`final_free`) keeps the next
+//!     arrival off final while anything is inside.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -48,6 +54,14 @@ pub const ARRIVAL_EVERY: u64 = 120 * 20;
 pub const PROTECT_M: f64 = 6_000.0;
 pub const MAX_ACTIVE: usize = 14;
 pub const HOUR: u64 = 3600 * 20;
+/// LVP: C no earlier than this far out. The deadline is 3,704 m and the
+/// controller looks every 20 ticks (70 m at final speed), so 4,000 m gives
+/// it four looks. Earlier would protect the LSA for longer than the rule
+/// needs and hold more ground traffic.
+pub const LVP_CLEAR_M: f64 = 4_000.0;
+/// LVP: how far ahead along its route a taxiing aircraft looks for an LSA,
+/// metres. It moves 10 m between looks; the LSA test already adds BODY_M.
+pub const LSA_LOOK_M: u64 = 60;
 pub const WEST: [&str; 4] = ["27", "28", "29R", "29L"];
 pub const EAST: [&str; 4] = ["09", "10", "11L", "11R"];
 
@@ -115,6 +129,8 @@ pub struct Ctl {
     /// Arrivals the test sends around: C withheld, or G at 4 km.
     pub withhold: HashSet<String>,
     pub send_around: HashSet<String>,
+    /// LVP: aircraft this controller stopped short of an LSA.
+    pub lsa_held: HashSet<String>,
     pub serial: u32,
     pub stats: Stats,
     /// B4/B5: the controller spawns its own traffic. B6: the world's
@@ -234,6 +250,7 @@ impl Ctl {
             seen_vacate: HashSet::new(),
             withhold: HashSet::new(),
             send_around: HashSet::new(),
+            lsa_held: HashSet::new(),
             serial: 0,
             stats: Stats::default(),
             spawn: true,
@@ -345,8 +362,40 @@ impl Ctl {
             return;
         }
         let flow = self.flow(w);
+        self.lsa_holds(w);
         self.arrivals(w, flow);
         self.after_arrivals(w, flow);
+    }
+
+    /// LVP: stop each taxiing aircraft short of a hot LSA, and send on the
+    /// ones it stopped once theirs has cooled. An aircraft already inside
+    /// keeps going: stopping it there would only hold the LSA longer.
+    pub fn lsa_holds(&mut self, w: &mut World) {
+        if !w.lvp() {
+            return;
+        }
+        let hot: Vec<twr_sim::conflict::Dir> = w.monitor.dirs.iter()
+            .filter(|d| w.monitor.lsa.0.contains_key(&d.desig))
+            .filter(|d| w.aircraft.iter().any(|a| matches!(&a.phase, Phase::Final(x) | Phase::Landing(x) if *x == d.desig)))
+            .cloned()
+            .collect();
+        let margin = twr_sim::conflict::BODY_M as f64;
+        for i in 0..w.aircraft.len() {
+            let a = &w.aircraft[i];
+            if !matches!(a.phase, Phase::Taxi | Phase::HoldPosition) {
+                continue;
+            }
+            let here = a.pos_m(&w.airport, &w.graph);
+            let ahead: Vec<(f64, f64)> = samples(w, &a.route, a.pos_mdm).into_iter().take((LSA_LOOK_M / 20 + 1) as usize).collect();
+            let stop = hot.iter().any(|d| !w.monitor.lsa.contains(d, here, margin) && ahead.iter().any(|&p| w.monitor.lsa.contains(d, p, margin)));
+            let cs = a.callsign.clone();
+            if stop && a.phase == Phase::Taxi {
+                w.hold(i).unwrap();
+                self.lsa_held.insert(cs);
+            } else if !stop && a.phase == Phase::HoldPosition && self.lsa_held.remove(&cs) {
+                w.hold(i).unwrap();
+            }
+        }
     }
 
     /// Arrivals: clearances and go-arounds on final, then a new one onto a
@@ -372,14 +421,15 @@ impl Ctl {
                 }
                 continue;
             }
-            if out > 2_000.0 {
+            let lvp = w.lvp();
+            if out > if lvp { LVP_CLEAR_M } else { 2_000.0 } {
                 continue;
             }
-            let clear = !on.contains(&Some(r)) && !lining(w, r, usize::MAX) && !crossing_on(&self.pending, r);
+            let clear = !on.contains(&Some(r)) && !lining(w, r, usize::MAX) && !crossing_on(&self.pending, r) && w.lsa_blocker(i).is_none();
             let exit = samples(w, &a.route, a.exit.as_ref().unwrap().at_mdm);
             if clear && reserve_ok(w, i, &exit, &self.planned) {
                 w.clear_to_land(i).unwrap();
-            } else if out <= 1_500.0 {
+            } else if !lvp && out <= 1_500.0 {
                 w.go_around(i).unwrap();
             }
         }
@@ -522,9 +572,11 @@ impl Ctl {
                 Phase::Holding if w.aircraft[i].exit.is_some() => {
                     // A vacated arrival: to a free stand, reserved like a push.
                     let n = w.airport.stands.len() as u64;
-                    let s = w.airport.stands[self.pick(n) as usize].node;
+                    let st = &w.airport.stands[self.pick(n) as usize];
+                    let s = st.node;
                     let taken = w.aircraft.iter().any(|a| a.route.nodes.contains(&s)) || self.planned.values().any(|r| r.nodes.contains(&s));
-                    if taken {
+                    // B10, A2: `taxi` refuses a stand below the type's code letter.
+                    if taken || !twr_sim::traffic::stand_fits(st.code, w.aircraft[i].type_code) {
                         continue;
                     }
                     let Some(r) = w.plan(i, s, &[], &[]) else { continue };

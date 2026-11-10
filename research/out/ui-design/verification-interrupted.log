@@ -1,0 +1,9 @@
+PASS a-1500-light-motion popup 15.58 used 96.8
+PASS a-1500-light-reduced popup 15.58 used 96.8
+PASS a-1500-dark-motion popup 3.03 used 96.8
+PASS a-1500-dark-reduced popup 3.03 used 96.8
+PASS a-1920-light-motion popup 15.58 used 97.5
+PASS a-1920-light-reduced popup 15.58 used 97.5
+PASS a-1920-dark-motion popup 3.03 used 97.5
+PASS a-1920-dark-reduced popup 3.03 used 97.5
+PASS b-1500-light-motion popup 15.58 used 96.3

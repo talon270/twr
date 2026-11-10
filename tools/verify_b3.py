@@ -34,7 +34,7 @@ def ff_until(pg, prefix, max_ticks=400_000, chunk=200):
     return phase(pg).startswith(prefix), t
 
 def strip(pg):
-    return {k: pg.text_content(f"#{k}0") for k in ("state", "hint", "notice")}
+    return {k: pg.text_content(f"#{k}0" if k == "state" else f"#sel-{k}") for k in ("state", "hint", "notice")}
 
 with sync_playwright() as pw:
     b = pw.chromium.launch()
@@ -42,7 +42,10 @@ with sync_playwright() as pw:
     errs = []
     pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e)))
     pg.on("console", lambda m: m.type == "error" and errs.append(m.text))
-    pg.goto(PAGE); pg.wait_for_timeout(600)
+    # Seed 7 puts IGO512 on a stand with a tail choice, so "P opens the tail
+    # picker" always runs. A random seed failed it on one-way stands (C31L,
+    # A10R), where P pushes at once: correct play, wrong test (2026-11-10).
+    pg.goto(PAGE + "?seed=7"); pg.wait_for_timeout(600)
     box = pg.locator("#map").bounding_box()
     ox, oy, cw, ch = box["x"], box["y"], box["width"], box["height"]
     print("seed", pg.text_content("#seed"))
@@ -64,6 +67,8 @@ with sync_playwright() as pw:
     check(strip(pg)["notice"] == "can't taxi now" and app(pg, "a.taxi_dest()") == -1, f"T on stand refused inline: {strip(pg)['notice']!r}")
 
     pg.keyboard.press("p"); frame(pg)
+    check(strip(pg)["hint"].startswith("← → choose"), "P opens the tail picker: " + strip(pg)["hint"])
+    pg.keyboard.press("Enter"); frame(pg)
     check(phase(pg) == "Pushback" and strip(pg)["notice"] == "", f"P starts pushback: {strip(pg)['state']!r}")
     app(pg, "a.fast_forward(300)"); frame(pg)
     pg.screenshot(path=str(OUT / "b3_pushback.png"))
@@ -112,27 +117,32 @@ with sync_playwright() as pw:
         break
     print(f"  runway crossings on the way: {crossed}")
 
-    pg.keyboard.press("l"); frame(pg)
+    # The Line up button on the selected strip presses L (UX1).
+    check("L" in pg.evaluate("[...document.querySelectorAll('#sel-verbs button')].map(b => b.dataset.key).join('')"), "a Line up button is on the strip")
+    pg.click("#sel-verbs button[data-key=L]"); frame(pg)
     ok, t = ff_until(pg, "LinedUp")
     s = strip(pg)
     check(ok and s["hint"].startswith("T taxi · K takeoff"), f"lined up after {t} ticks: {s['state']!r} / {s['hint']!r}")
     trail = app(pg, "Array.from(a.trail(0))")
-    check(trail[1:] == prev, f"taxi followed the drawn route, edge for edge ({len(prev)} edges after the push edge)")
+    check(trail[-len(prev):] == prev and len(trail) > len(prev), f"taxi followed the drawn route, edge for edge ({len(prev)} edges after {len(trail) - len(prev)} push edges)")
     pg.screenshot(path=str(OUT / "b3_linedup.png"))
 
     # Paused (Space) for the timed roll: otherwise the page's own frames step
     # the sim between fast-forwards, uncounted, and a loaded machine reads
     # the roll short (640 ticks under a parallel cargo build, 2026-11-07).
     pg.keyboard.press(" ")
-    pg.keyboard.press("k"); frame(pg)
-    check(phase(pg).startswith("TakeoffRoll"), "K starts the takeoff roll: " + strip(pg)["state"])
+    pg.click("#sel-verbs button[data-key=K]"); frame(pg)
+    check(phase(pg).startswith("TakeoffRoll"), "the Takeoff button starts the roll: " + strip(pg)["state"])
     ok, t = ff_until(pg, "Airborne", chunk=20)
     check(ok and 700 <= t <= 800, f"airborne after {t} ticks ({t / 20:.1f} s; 75 m/s at 2 m/s² is 37.5 s): {strip(pg)['state']!r}")
     pg.keyboard.press(" ")
     app(pg, "a.fast_forward(40)"); frame(pg)
     pg.screenshot(path=str(OUT / "b3_airborne.png"))
     ok, t = ff_until(pg, "Departed")
-    check(ok and strip(pg)["state"].startswith("Departed"), f"departed: {strip(pg)['state']!r}")
+    # The strip leaves the bay on departure (UX1), so its text stops updating:
+    # read the state from the app, and check the strip is gone.
+    state = app(pg, "a.strip_state(0)")
+    check(ok and state.startswith("Departed") and not pg.is_visible("#strip0"), f"departed, strip left the bay: {state!r}")
 
     pg.click("#theme"); frame(pg)
     pg.screenshot(path=str(OUT / "b3_light_departed.png"))

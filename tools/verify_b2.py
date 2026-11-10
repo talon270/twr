@@ -83,35 +83,43 @@ with sync_playwright() as pw:
     frame(pg)
     check(app(pg, "a.selected_callsign()") == "IGO512", "click 15 px off the aircraft selects it (44 px target)")
     check("sel" in pg.get_attribute("#strip0", "class"), "strip shows the selection")
-    check(pg.text_content("#hint0").startswith("P push"), "hint offers P on stand: " + pg.text_content("#hint0"))
+    check(pg.text_content("#sel-hint").startswith("P push"), "hint offers P on stand: " + pg.text_content("#sel-hint"))
     # B3: taxi needs a pushback first. Push, and run the sim to its end.
-    pg.keyboard.press("p")
+    pg.keyboard.press("p"); pg.keyboard.press("Enter")
     for _ in range(200):
         if app(pg, "a.phase(0)") == "Holding":
             break
         app(pg, "a.fast_forward(200)")
     frame(pg)
-    check(pg.text_content("#hint0").startswith("T taxi"), "after pushback, hint offers T: " + pg.text_content("#hint0"))
+    check(pg.text_content("#sel-hint").startswith("T taxi"), "after pushback, hint offers T: " + pg.text_content("#sel-hint"))
 
     # T, then Esc cancels.
     pg.keyboard.press("t"); frame(pg)
-    check(pg.text_content("#hint0").startswith("Click a stand"), "T enters taxi mode: " + pg.text_content("#hint0"))
+    check(pg.text_content("#sel-hint").startswith("Click a stand"), "T enters taxi mode: " + pg.text_content("#sel-hint"))
     pg.keyboard.press("Escape"); frame(pg)
-    check(pg.text_content("#hint0").startswith("T taxi"), "Esc leaves taxi mode")
+    check(pg.text_content("#sel-hint").startswith("T taxi"), "Esc leaves taxi mode")
 
     # T, click a destination: the on-screen holding point farthest from the aircraft.
     pg.keyboard.press("t")
-    holds = app(pg, "Array.from(a.hold_nodes()).map(n => [n, Array.from(a.node_screen(n))])")
-    vis = [(n, p) for n, p in holds if 30 < p[0] < cw - 30 and 30 < p[1] < ch - 30]
-    if not vis:  # zoomed too far in for any hold; use a stand instead
-        vis = [(n, p) for n, p in app(pg, "Array.from(a.stand_nodes()).map(n => [n, Array.from(a.node_screen(n))])")
-               if 30 < p[0] < cw - 30 and 30 < p[1] < ch - 30 and abs(p[0] - ax) + abs(p[1] - ay) > 60]
-    dest, (dx, dy) = max(vis, key=lambda v: (v[1][0] - ax) ** 2 + (v[1][1] - ay) ** 2)
-    pg.mouse.click(ox + dx, oy + dy)
-    p0 = app(pg, "Array.from(a.preview_edges())")
-    check(len(p0) > 0, f"destination click draws a preview ({len(p0)} edges)")
-    pg.screenshot(path=str(OUT / "b2_preview.png"))
-
+    # A stand fallback was flaky: a stand can be too small for the A20N
+    # ("stand R05 takes code B; A20N is C") and Enter then refuses. Holding
+    # points are the only destination with no size rule, so zoom out about
+    # the canvas centre until six are on screen.
+    def visible_holds():
+        holds = app(pg, "Array.from(a.hold_nodes()).map(n => [n, Array.from(a.node_screen(n))])")
+        return [(n, p) for n, p in holds if 30 < p[0] < cw - 30 and 30 < p[1] < ch - 30]
+    vis = visible_holds()
+    pg.mouse.move(ox + cw / 2, oy + ch / 2)
+    for _ in range(8):
+        if len(vis) >= 6:  # enough alternatives if one has no avoidable route
+            break
+        pg.mouse.wheel(0, 100); settle(pg, 400)
+        vis = visible_holds()
+    ax, ay = app(pg, "a.aircraft_screen(0)")
+    # C2: the tail push leaves the aircraft facing one way and the planner
+    # refuses a U-turn, so a point behind the tail may have no route. Try the
+    # farthest points in turn until one has.
+    vis.sort(key=lambda v: -((v[1][0] - ax) ** 2 + (v[1][1] - ay) ** 2))
     # Right-click a preview segment that a click would hit unambiguously: avoid it.
     def clean_edge(cands):
         for e in cands:
@@ -119,34 +127,47 @@ with sync_playwright() as pw:
             if 20 < mx < cw - 20 and 20 < my < ch - 20 and app(pg, f"a.edge_under({mx},{my})") == e:
                 return e, mx, my
         return None
-    # Middle edges first: avoiding the stand's only exit leaves no route.
-    mid = sorted(p0, key=lambda e: abs(p0.index(e) - len(p0) / 2))
+    # Some destinations are reached through a chain with no alternative, so
+    # every avoid cuts every route (seed 3221133235). That is the planner
+    # telling the truth, not a bug: skip to the next destination.
     rerouted = None
-    tried_avoid = []
-    for e in mid:
-        hit = clean_edge([e])
-        if not hit:
+    p0, dest, tried_avoid = [], None, []
+    for dest, (dx, dy) in vis[:12]:
+        pg.mouse.click(ox + dx, oy + dy)
+        p0 = app(pg, "Array.from(a.preview_edges())")
+        if not p0:  # C2: behind the tail, no route
+            pg.keyboard.press("Escape"); pg.keyboard.press("t")
             continue
-        _, mx, my = hit
-        tried_avoid.append(e)
-        pg.mouse.click(ox + mx, oy + my, button="right")
-        p1 = app(pg, "Array.from(a.preview_edges())")
-        if p1 and e not in p1:
-            rerouted = (e, p1)
+        # Middle edges first: avoiding the stand's only exit leaves no route.
+        mid = sorted(p0, key=lambda e: abs(p0.index(e) - len(p0) / 2))
+        for e in mid:
+            hit = clean_edge([e])
+            if not hit:
+                continue
+            _, mx, my = hit
+            tried_avoid.append(e)
+            pg.mouse.click(ox + mx, oy + my, button="right")
+            p1 = app(pg, "Array.from(a.preview_edges())")
+            if p1 and e not in p1:
+                rerouted = (e, p1)
+                break
+            frame(pg)
+            no_route = "No route" in pg.text_content("#sel-hint")
+            pg.mouse.click(ox + mx, oy + my, button="right")  # toggle the avoid off again
+            back = app(pg, "Array.from(a.preview_edges())")
+            if not (no_route and back == p0):
+                check(False, f"avoid of edge {e} left no route, hint says so, second right-click restores the preview")
+        if rerouted:
             break
-        frame(pg)
-        no_route = "No route" in pg.text_content("#hint0")
-        pg.mouse.click(ox + mx, oy + my, button="right")  # toggle the avoid off again
-        back = app(pg, "Array.from(a.preview_edges())")
-        if not (no_route and back == p0):
-            check(False, f"avoid of edge {e} left no route, hint says so, second right-click restores the preview")
-    if tried_avoid and not rerouted:
-        print(f"  (tried {len(tried_avoid)} of {len(p0)} preview edges; each avoid cut every route)")
+        # Every avoid cut every route: drop this destination, try the next.
+        pg.keyboard.press("Escape"); pg.keyboard.press("t")
+    check(len(p0) > 0, f"destination click draws a preview ({len(p0)} edges)")
+    pg.screenshot(path=str(OUT / "b2_preview.png"))
     if rerouted:
         e, p1 = rerouted
         check(True, f"right-click avoids edge {e}'s taxiway: preview {len(p0)} -> {len(p1)} edges, edge gone")
     else:
-        check(False, f"a right-click avoid produced a different route (seed {pg.text_content('#seed')})")
+        check(False, f"a right-click avoid produced a different route (seed {pg.text_content('#seed')}; tried {len(tried_avoid)} edges over the destinations)")
     # Left-click a taxiway segment off the route: it becomes a via.
     cur = app(pg, "Array.from(a.preview_edges())")
     others = app(pg, f"""(() => {{ const out = []; for (let e = 0; e < a.edge_count(); e += 7) {{
@@ -164,11 +185,11 @@ with sync_playwright() as pw:
         if v in p2 and all(p2[k] != p2[k + 1] for k in range(len(p2) - 1)):
             frame(pg)
             check(True, f"left-click makes edge {v} a via; preview now {len(p2)} edges, no U-turn")
-            check(pg.text_content("#via0").startswith("Via "), "strip lists the via: " + pg.text_content("#via0"))
+            check(pg.text_content("#sel-via").startswith("Via "), "strip lists the via: " + pg.text_content("#sel-via"))
             via_ok = True
             break
         frame(pg)
-        refused = not p2 and "U-turn" in pg.text_content("#hint0")
+        refused = not p2 and "U-turn" in pg.text_content("#sel-hint")
         pg.mouse.click(ox + mx, oy + my)  # toggle off
         check(refused and app(pg, "Array.from(a.preview_edges())") == cur, f"via {v} refused with a reason, second click restores the preview")
     check(via_ok, "found a via that gives a route")
@@ -202,7 +223,7 @@ with sync_playwright() as pw:
             break
         pg.keyboard.press("x")
     trail = app(pg, "Array.from(a.trail(0))")
-    check(not app(pg, "a.moving(0)") and trail[1:] == sent, f"followed path equals drawn path, edge for edge ({len(sent)} edges after the push edge)")
+    check(not app(pg, "a.moving(0)") and trail[-len(sent):] == sent and len(trail) > len(sent), f"followed path equals drawn path, edge for edge ({len(sent)} edges after {len(trail) - len(sent)} push edges)")
     check(app(pg, "a.route_end(0)") == dest, "aircraft stops at the clicked destination")
 
     # Theme click must not steal the next Enter.
@@ -215,7 +236,7 @@ with sync_playwright() as pw:
     # Since B5 a route that ends at a stand ends OnStand, and T needs a push
     # first. The random destination above is sometimes a stand (4 of 8 runs).
     if app(pg, "a.phase(0)") == "OnStand":
-        pg.click("#strip0"); pg.keyboard.press("p")
+        pg.click("#strip0"); pg.keyboard.press("p"); pg.keyboard.press("Enter")
         while app(pg, "a.phase(0)") != "Holding":
             app(pg, "a.fast_forward(20)")
     pg.keyboard.press("t")
@@ -232,7 +253,13 @@ with sync_playwright() as pw:
     # 1920 wide: map fills the window, no stranded band.
     b, pg, errs, _ = run(pw, {"width": 1920, "height": 1080})
     box = pg.locator("#map").bounding_box()
-    check(abs(box["y"] + box["height"] - 1080) < 1, f"1920x1080: map reaches the bottom ({box['y'] + box['height']:.0f})")
+    # PLAN-ui-console step 2: the selected-aircraft panel (#ctx) sits under
+    # the map and the radio line under both, so map meets panel, panel meets
+    # the radio line, and the radio line ends at the window.
+    cb = pg.locator("#ctx").bounding_box()
+    rb = pg.locator("#radio").bounding_box()
+    check(abs(box["y"] + box["height"] - cb["y"]) < 1 and abs(cb["y"] + cb["height"] - rb["y"]) < 1 and abs(rb["y"] + rb["height"] - 1080) < 1,
+          f"1920x1080: map meets the panel ({box['y'] + box['height']:.0f} vs {cb['y']:.0f}), panel meets the radio line ({cb['y'] + cb['height']:.0f} vs {rb['y']:.0f}), radio line reaches the bottom ({rb['y'] + rb['height']:.0f})")
     pg.screenshot(path=str(OUT / "b2_1920.png"))
     check(not errs, f"zero console errors (1920): {errs}")
     b.close()

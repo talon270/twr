@@ -1,0 +1,39 @@
+{
+  "status": "blocked at Chromium startup; final browser matrix has not completed",
+  "date": "2026-11-10",
+  "launch_error": "Crashpad setsockopt: Operation not permitted (1); headless shell SandboxHostLinux shutdown: Operation not permitted (1)",
+  "browser_cases_completed_after_resume": 0,
+  "static_validation": "three JS syntax checks, 66 text/boundary pairs, six popup ratios passed",
+  "existing_screenshots": [
+    "a-1500-dark-motion-dialog.png",
+    "a-1500-dark-motion.png",
+    "a-1500-dark-reduced-dialog.png",
+    "a-1500-dark-reduced.png",
+    "a-1500-dark-route.png",
+    "a-1500-light-motion-dialog.png",
+    "a-1500-light-motion.png",
+    "a-1500-light-reduced-dialog.png",
+    "a-1500-light-reduced.png",
+    "a-1920-dark-motion-dialog.png",
+    "a-1920-dark-motion.png",
+    "a-1920-dark-reduced-dialog.png",
+    "a-1920-dark-reduced.png",
+    "a-1920-light-motion-dialog.png",
+    "a-1920-light-motion.png",
+    "a-1920-light-reduced-dialog.png",
+    "a-1920-light-reduced.png",
+    "b-1500-dark-route.png",
+    "b-1500-light-motion-dialog.png",
+    "b-1500-light-motion.png",
+    "b-1500-light-reduced-dialog.png",
+    "b-1500-light-reduced.png",
+    "draft-a.png",
+    "draft-b.png",
+    "draft-c.png"
+  ],
+  "final_html_sha256": {
+    "a": "b153cfa66a9b8cd4216fa4e63052685ad6f83572a87b04ad0c383f63a234f0fd",
+    "b": "308de8338e2f382c745d24290247414f9138d9dff4127555ba920a2304965857",
+    "c": "726fc22ea022e3a1ea5fd74ebef408059cf564d9b4cdfe7f1733aa54561bb26d"
+  }
+}

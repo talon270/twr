@@ -33,6 +33,82 @@ pub const WEST_HEADING_DEG: f64 = 284.0;
 /// inside the last PILOT_GA_MAX_M. `authored`.
 pub const WINDSHEAR_GA_PCT: u64 = 3;
 
+/// C4: tailwind on a runway end, knots, from which the player is warned
+/// (`TAILWIND_WARN_KT`) or refused (`TAILWIND_LIMIT_KT`). PANS-ATM and
+/// aircraft limits, from memory, unconfirmed; the mean wind is used, gusts
+/// are not. `authored`.
+pub const TAILWIND_WARN_KT: f64 = 5.0;
+pub const TAILWIND_LIMIT_KT: f64 = 10.0;
+/// A heavy needs this much runway to depart (`aircraft::MIN_TAKEOFF_RUN_HEAVY_M`).
+pub const HEAVY_RUN_M: u64 = 3_100;
+
+/// IGI's eight runway ends, each with its flow and the longest run it
+/// offers, metres. Measured from `data/vidp.twr` by the test
+/// `end_lengths_match_the_airport`. Order is the canonical one: a plan
+/// lists its ends in it, so the draw from a default plan matches B6-B9.
+pub const ENDS: [(&str, Flow, u64); 8] = [
+    ("29L", Flow::West, 4421),
+    ("28", Flow::West, 3808),
+    ("29R", Flow::West, 4404),
+    ("27", Flow::West, 2810),
+    ("11R", Flow::East, 4421),
+    ("10", Flow::East, 3808),
+    ("11L", Flow::East, 4404),
+    ("09", Flow::East, 2810),
+];
+
+pub fn end_flow(end: &str) -> Option<Flow> {
+    ENDS.iter().find(|e| e.0 == end).map(|e| e.1)
+}
+
+pub fn end_len_m(end: &str) -> u64 {
+    ENDS.iter().find(|e| e.0 == end).map_or(0, |e| e.2)
+}
+
+/// C4: which ends take landings and which take departures. All of one
+/// direction: the conflict model does not link opposite directions
+/// (`conflict.rs`), so a mix would go unchecked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Plan {
+    pub flow: Flow,
+    pub land: Vec<&'static str>,
+    pub depart: Vec<&'static str>,
+}
+
+impl Plan {
+    /// The flow's own pick: two landing ends, two departure ends.
+    pub fn default_for(flow: Flow) -> Plan {
+        Plan { flow, land: flow.arr_rwys().to_vec(), depart: flow.dep_rwys().to_vec() }
+    }
+
+    /// Ends of `role` after setting `end` on or off, in canonical order.
+    pub fn with(&self, end: &'static str, land: bool, on: bool) -> Plan {
+        let mut p = self.clone();
+        let list = if land { &mut p.land } else { &mut p.depart };
+        list.retain(|e| *e != end);
+        if on {
+            list.push(end);
+        }
+        let rank = |e: &&str| ENDS.iter().position(|x| x.0 == *e);
+        p.land.sort_by_key(rank);
+        p.depart.sort_by_key(rank);
+        p
+    }
+
+    /// The runway for a movement, from its draw `roll`; "" if no end fits
+    /// (a heavy with no departure run of `HEAVY_RUN_M`).
+    pub fn pick(&self, arrival: bool, heavy: bool, roll: u64) -> &'static str {
+        let ends: Vec<&'static str> = if arrival {
+            self.land.clone()
+        } else if heavy {
+            self.depart.iter().copied().filter(|e| end_len_m(e) >= HEAVY_RUN_M).collect()
+        } else {
+            self.depart.clone()
+        };
+        if ends.is_empty() { "" } else { ends[(roll % ends.len() as u64) as usize] }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Wind {
     /// Direction the wind blows from, degrees true.
@@ -48,6 +124,13 @@ impl Wind {
     /// Headwind on a west-flow runway, knots; negative is a tailwind.
     pub fn west_headwind(self) -> f64 {
         f64::from(self.kt) * (f64::from(self.dir) - WEST_HEADING_DEG).to_radians().cos()
+    }
+
+    /// Tailwind on a runway end of `flow`, knots, never negative. The
+    /// flow's heading stands for all four ends: they lie within 13 degrees.
+    pub fn tailwind_kt(self, flow: Flow) -> f64 {
+        let head = f64::from(self.kt) * (f64::from(self.dir) - WEST_HEADING_DEG - if flow == Flow::East { 180.0 } else { 0.0 }).to_radians().cos();
+        (-head).max(0.0)
     }
 
     pub fn flow(self) -> Flow {
@@ -122,6 +205,25 @@ mod tests {
         // Either side of straight across 29L (014°): 1° in, 1° out.
         assert_eq!(w(13, 12).flow(), Flow::West);
         assert_eq!(w(15, 12).flow(), Flow::East);
+    }
+
+    #[test]
+    fn tailwind_is_the_headwind_of_the_other_flow() {
+        let w = Wind { dir: 290, kt: 12, gust: None };
+        assert!(w.tailwind_kt(Flow::West) < 0.5, "a 290 wind is a headwind on 29");
+        assert!((w.tailwind_kt(Flow::East) - 12.0 * 6.0_f64.to_radians().cos()).abs() < 0.01);
+        assert!(Wind::CALM.tailwind_kt(Flow::East) == 0.0);
+    }
+
+    #[test]
+    fn a_default_plan_draws_what_b6_to_b9_drew() {
+        let p = Plan::default_for(Flow::West);
+        assert_eq!(p.pick(true, false, 0), "29L");
+        assert_eq!(p.pick(true, false, 1), "28");
+        assert_eq!((p.pick(false, false, 0), p.pick(false, false, 1)), ("29R", "27"));
+        assert_eq!((p.pick(false, true, 0), p.pick(false, true, 1)), ("29R", "29R"), "heavies take the long one whatever the roll");
+        assert_eq!(p.with("29R", false, false).with("27", false, true).pick(false, true, 0), "", "27 alone is too short for a heavy");
+        assert_eq!(p.with("28", false, true).depart, vec!["28", "29R", "27"], "canonical order");
     }
 
     #[test]

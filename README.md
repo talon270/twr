@@ -2,8 +2,9 @@
 
 A tower controller game set at Delhi's Indira Gandhi International (IGI,
 VIDP), built in Rust and run as WebAssembly in one offline HTML file. The
-airport is OpenStreetMap's geometry (4 runways, 591 taxiway segments, 115
-stands, extracted 2026-11-05). The traffic follows IGI's real rates (DIAL:
+airport is OpenStreetMap's geometry (4 runways, 591 taxiway ways,
+extracted 2026-11-05) with the eAIP apron charts' 270 stands (AIRAC
+2026-10-29). The traffic follows IGI's real rates (DIAL:
 84 movements in the peak hour), and its fleet mix comes from GMR's filings
 and DGCA's shares. You push, taxi, line up, clear for takeoff and clear to
 land. The score is three numbers, never one.
@@ -19,7 +20,7 @@ Rebuild after a change:
 
 ```sh
 ./build.sh                                        # dist/index.html
-cargo test --release --workspace                  # 86 tests, about 7 min
+cargo test --release --workspace                  # 143 tests, about 5 min
 python3 tools/verify_b9.py /tmp/twr-shots         # Playwright, real clicks
 cargo run -p twr-osm -- VIDP                      # re-extract after editing data/vidp.overrides.toml
 ```
@@ -55,6 +56,8 @@ script.
 | Surge | 53 per real hour, plus 10% every 2 minutes | the third incident |
 
 `?mode=peak&seed=7` replays a shift: same seed, same wind, same traffic.
+**Practice lets you choose fog.** Use the Fog control in the wind box to turn
+LVP on or off.
 
 ## The things most tower games get wrong
 
@@ -76,6 +79,27 @@ or sits lined up with nothing binding K does count. Pilot and windshear
 go-arounds are challenges, not delay. The controller in the tests causes
 58–315 game minutes of delay per Peak shift (20 shifts: 10 seeds on their
 own wind, 10 forced east), which gives you a number to beat.
+
+**Fog changes when you can clear an arrival.** Low-visibility procedures
+(LVP) are drawn for about 10% of shifts with steady wind at or below 6 kt:
+293 of 2,781 eligible seeds in the first 10,000 draw LVP (10.5%). Practice
+also has a Fog toggle. Under LVP, arrivals need 5 NM spacing on final and
+the localizer sensitive area (LSA) must be empty before the next one joins.
+Hold C while another aircraft is in the LSA; an uncleared arrival goes around
+at 2 NM (3,704 m). Keep ground traffic out of the LSA from a cleared
+arrival's 2 NM point until its landing roll ends. The taxi preview gives
+published LVP taxiways a lower cost; a via can still take another route.
+Ten Peak shifts forced to LVP (`tests/lvp_long.rs`, two real hours each,
+the auto-controller at the controls) raise 0 incidents and finish all 436
+movements; 27 arrivals go around for an occupied LSA. That is the test
+controller's flow, not a rate for IGI: AD 2.2 gives no LVP rate, so the game
+claims none.
+
+**A go-around forced by an occupied LSA is not your delay.** Withholding C
+while the LSA is busy follows the rule. At 2 NM that go-around is logged as
+`LSA occupied`: it adds no delay or challenge, though the missed landing
+still costs a movement. Forget C with a clear LSA and `no landing clearance`
+still counts as delay. If you held an aircraft in the LSA, its wait counts.
 
 **A conflict is never missed.** The conflict monitor checks wake, runway
 occupancy, incursions and ground spacing on every tick. The test controller
@@ -107,6 +131,10 @@ runway ahead is refused, with the metres in the message.
 | Climb 175 kt and approach 136 kt match the A320neo (EUROCONTROL, FAA) | one speed set for every type: taxi 10 m/s, push 1 m/s, 2 m/s² to 75 m/s rotation | per-type speeds; VR is a gap for every type in the research |
 | Radio telephony for 68 operators (FAA JO 7340.2P) | pilot go-arounds 5%, windshear 3% on gusty shifts | — |
 | Landing roll inside DIAL's 40–45 s runway occupancy | 60 s stand grace, 60 s "delayed" threshold, Surge ends at 3 incidents (your call) | — |
+| AD 2.22 VIII sets the 2 NM (3,704 m) LVP clearance deadline | 5 NM final spacing, plus an empty LSA before the next arrival joins; set from the sim's LSA clearance timing | an LVP rate for IGI; ten forced-LVP Peak shifts run clean under the test controller, which is not a measured rate |
+| Six AD 2.24 LSA charts, traced as 22 vector stations in `data/vidp.lsa.csv` | straight edges between stations, scaled by each chart's runway fill against OSM because the scale bars disagree with the runway lengths | surveyed LSA boundaries; these are chart shapes mapped to the sim, not surveyed polygons |
+| AD 2.22 VIII Tables 2–3 supply 89 west and 92 east taxiway names in `data/vidp.lvp.csv` | a named taxiway outside the flow's set costs 4× its length; the graph lacks F6, H1, H6, Link 19 west and D8, D9, F6, G1, G2, Link 19 east | add the missing taxiways to the airport graph |
+| AD 2.2 gives no LVP movement rate | LVP on 10% of eligible steady-wind shifts at or below 6 kt; 293 of 2,781 eligible seeds in the first 10,000 draw it | Delhi visibility and wind climatology |
 
 ## Data, licence, privacy
 
@@ -115,8 +143,16 @@ shows that credit with the extract's date, and says it is **not for
 real-world navigation**. The derived files in `data/` carry the same licence.
 The eAIP charts are read as a reference only: no chart image ships.
 
-The page stores only your theme and personal bests, in `localStorage` under
-`twr.v1` (schema 2). It sends nothing anywhere.
+**A title screen opens on every load** with the name, the credit, the eAIP
+AIRAC date (2026-10-29), the OSM extract date and the not-for-navigation line.
+Start or Esc closes it; the sim is held until then. Automated browsers
+(`navigator.webdriver`) skip it so the verify scripts keep working; add
+`?title=1` to force it.
 
-BLR and BOM layouts, low-visibility procedures, per-type speeds and the
+**LVP bests have their own key.** The page stores only your theme and personal
+bests in `localStorage` under `twr.v1` (schema 2). Fog shifts use `<mode>-lvp`
+in the existing `bests` map, so clear and fog shifts do not compete; the
+schema stays at 2. It sends nothing anywhere.
+
+BLR and BOM layouts, per-type speeds and the
 remaining research runs are planned for 1.1 (`PLAN-twr.md`).

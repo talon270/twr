@@ -1,0 +1,184 @@
+# Taxiways named in AIP India AD 2.22 VIII 4.4.4 (AMDT 11/2026), the CAT II/III preferred taxi routes.
+# Table 2 is west flow, Table 3 east flow. Written by research/work/vidp/lvp_routes_from_aip.py.
+flow,taxiway
+west,A
+west,A2
+west,C
+west,D
+west,D1
+west,D2
+west,D3
+west,D4
+west,E2
+west,E3
+west,E4
+west,E6
+west,E7
+west,E9
+west,F
+west,F3
+west,F4
+west,F5
+west,F6
+west,G
+west,G3
+west,G4
+west,G5
+west,H1
+west,H2
+west,H3
+west,H6
+west,J5
+west,J6
+west,J7
+west,K
+west,K1
+west,K2
+west,K5
+west,K6
+west,M1
+west,N
+west,N1
+west,N3
+west,N4
+west,N5
+west,N6
+west,N7
+west,P2
+west,P4
+west,P5
+west,P6
+west,P7
+west,P8
+west,P9
+west,Q
+west,R
+west,R2
+west,R3
+west,R4
+west,R5
+west,R6
+west,R7
+west,S5
+west,S6
+west,S7
+west,S8
+west,T6
+west,T7
+west,Y5
+west,Y6
+west,Y7
+west,Y8
+west,Z
+west,Z2
+west,Z3
+west,Z4
+west,Z5
+west,Z6
+west,Z7
+west,Link 1
+west,Link 2
+west,Link 3
+west,Link 4
+west,Link 6
+west,Link 7
+west,Link 8
+west,Link 9
+west,Link 10
+west,Link 16
+west,Link 19
+west,Link 33
+west,Link 34
+west,Link 39
+east,A
+east,A2
+east,C
+east,D
+east,D3
+east,D4
+east,D7
+east,D8
+east,D9
+east,E2
+east,E3
+east,E4
+east,E6
+east,E7
+east,E9
+east,F
+east,F3
+east,F4
+east,F5
+east,F6
+east,G
+east,G1
+east,G2
+east,G3
+east,G4
+east,G5
+east,H3
+east,J1
+east,J2
+east,J3
+east,J5
+east,J6
+east,J7
+east,K
+east,K3
+east,K5
+east,K6
+east,M
+east,M1
+east,N
+east,N1
+east,N3
+east,N4
+east,N5
+east,N6
+east,N7
+east,P1
+east,P2
+east,P3
+east,P4
+east,P5
+east,P6
+east,P7
+east,P8
+east,P9
+east,Q
+east,R
+east,R4
+east,R5
+east,R6
+east,R7
+east,S5
+east,S6
+east,S7
+east,S8
+east,T6
+east,T7
+east,Y1
+east,Y2
+east,Y4
+east,Y5
+east,Z
+east,Z4
+east,Z5
+east,Z6
+east,Z7
+east,Link 1
+east,Link 2
+east,Link 3
+east,Link 4
+east,Link 5
+east,Link 6
+east,Link 7
+east,Link 8
+east,Link 9
+east,Link 10
+east,Link 16
+east,Link 19
+east,Link 32
+east,Link 33
+east,Link 34
+east,Link 39

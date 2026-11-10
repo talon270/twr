@@ -13,20 +13,21 @@
 //! Format, one record per line, the name always last so it may hold spaces:
 //!
 //! ```text
-//! twr-airport 1
+//! twr-airport 2
 //! icao VIDP
 //! osm_base 2026-11-05T10:33:03Z      OSM snapshot the file was built from
 //! origin 28.56 77.10                 lat lon of (0, 0)
 //! n <x_dm> <y_dm>                    node; its index is its order among n lines
 //! e <a> <b> <t|r|s> [name]           edge: taxiway, runway, stand link
 //! r <end_a> <end_b> <name>           runway, by its two end nodes
-//! s <node> [name]                    stand
+//! s <node> <A-F|-> [name]           stand; the code is its largest ICAO aircraft code, - if unknown
 //! h <node> [name]                    holding point
+//! p <a|t> <n> x1 y1 .. xn yn [name]  apron (a) or terminal (t) outline, n >= 3 points
 //! ```
 
 /// First line of every file. Bump the number when the format changes, so an
 /// old file fails loudly instead of parsing into the wrong fields.
-pub const FORMAT: &str = "twr-airport 1";
+pub const FORMAT: &str = "twr-airport 2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Node {
@@ -84,12 +85,62 @@ pub struct Runway {
 pub struct Stand {
     pub name: String,
     pub node: u32,
+    /// B10: the largest ICAO code letter the stand takes (A-F), from the
+    /// eAIP chart; '-' when the source gives none (OSM stands).
+    pub code: char,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hold {
     pub name: String,
     pub node: u32,
+}
+
+/// B10: an apron or terminal outline, drawn under the network and never
+/// routed over. Points are decimetres from the origin, like nodes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Area {
+    /// 'a' apron, 't' terminal.
+    pub kind: char,
+    pub ring: Vec<(i32, i32)>,
+    pub name: String,
+}
+
+impl Area {
+    /// Where to print the name, in metres: the inside point farthest from
+    /// the outline, on a 24 x 24 grid over the bounding box. The vertex mean
+    /// falls outside a V-shaped pier (T3 International's lands on the apron).
+    /// ponytail: grid search, about 1/24 of the box off the true pole;
+    /// polylabel if labels ever need to sit exactly.
+    pub fn label_point(&self) -> (f64, f64) {
+        const GRID: usize = 24;
+        let r: Vec<(f64, f64)> = self.ring.iter().map(|&(x, y)| (f64::from(x) / 10.0, f64::from(y) / 10.0)).collect();
+        let edges = || r.iter().zip(r.iter().cycle().skip(1));
+        let inside = |p: (f64, f64)| {
+            edges().filter(|(a, b)| (a.1 > p.1) != (b.1 > p.1) && p.0 < a.0 + (p.1 - a.1) / (b.1 - a.1) * (b.0 - a.0)).count() % 2 == 1
+        };
+        let to_edge = |p: (f64, f64)| {
+            edges().map(|(a, b)| {
+                let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+                let t = (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / (dx * dx + dy * dy).max(1e-9)).clamp(0.0, 1.0);
+                (p.0 - a.0 - t * dx).hypot(p.1 - a.1 - t * dy)
+            }).fold(f64::INFINITY, f64::min)
+        };
+        let (x0, x1) = r.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.0), hi.max(p.0)));
+        let (y0, y1) = r.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.1), hi.max(p.1)));
+        let n = r.len() as f64;
+        let mut best = (r.iter().map(|p| p.0).sum::<f64>() / n, r.iter().map(|p| p.1).sum::<f64>() / n);
+        let mut far = -1.0;
+        for i in 0..GRID {
+            for j in 0..GRID {
+                let p = (x0 + (x1 - x0) * (i as f64 + 0.5) / GRID as f64, y0 + (y1 - y0) * (j as f64 + 0.5) / GRID as f64);
+                if inside(p) && to_edge(p) > far {
+                    (best, far) = (p, to_edge(p));
+                }
+            }
+        }
+        best
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -102,6 +153,7 @@ pub struct Airport {
     pub runways: Vec<Runway>,
     pub stands: Vec<Stand>,
     pub holds: Vec<Hold>,
+    pub areas: Vec<Area>,
 }
 
 impl Airport {
@@ -120,6 +172,7 @@ impl Airport {
             runways: Vec::new(),
             stands: Vec::new(),
             holds: Vec::new(),
+            areas: Vec::new(),
         };
         for (i, line) in lines {
             let at = |m: &str| format!("line {}: {m}: {line:?}", i + 1);
@@ -159,14 +212,51 @@ impl Airport {
                     ap.runways.push(Runway { name: f.next().unwrap_or("").to_string(), ends: [a, b] });
                 }
                 "s" | "h" => {
-                    let mut f = rest.splitn(2, ' ');
+                    // s <node> <code A-F or -> [name]; h <node> [name]
+                    let mut f = rest.splitn(if tag == "s" { 3 } else { 2 }, ' ');
                     let node = ap.node_ref(num(f.next())?).ok_or_else(|| at("node index out of range"))?;
+                    let code = if tag == "s" {
+                        let c = f.next().unwrap_or("");
+                        match c.as_bytes() {
+                            [b'A'..=b'F' | b'-'] => c.as_bytes()[0] as char,
+                            _ => return Err(at("stand code must be A-F or -")),
+                        }
+                    } else {
+                        '-'
+                    };
                     let name = f.next().unwrap_or("").to_string();
                     if tag == "s" {
-                        ap.stands.push(Stand { name, node });
+                        ap.stands.push(Stand { name, node, code });
                     } else {
                         ap.holds.push(Hold { name, node });
                     }
+                }
+                // p <a|t> <n> x1 y1 ... xn yn [name]
+                "p" => {
+                    let mut f = rest.split(' ');
+                    let kind = match f.next() {
+                        Some("a") => 'a',
+                        Some("t") => 't',
+                        _ => return Err(at("area kind must be a or t")),
+                    };
+                    let n = usize::try_from(num(f.next())?).map_err(|_| at("bad point count"))?;
+                    // Check the count against the fields on the line before
+                    // allocating: a corrupt count must be an error, not a
+                    // multi-gigabyte Vec::with_capacity.
+                    let have = f.clone().count() / 2;
+                    if n > have {
+                        return Err(at(&format!("point count {n}, but the line holds only {have} points")));
+                    }
+                    let mut ring = Vec::with_capacity(n);
+                    for _ in 0..n {
+                        let x = i32::try_from(num(f.next())?).map_err(|_| at("x out of range"))?;
+                        let y = i32::try_from(num(f.next())?).map_err(|_| at("y out of range"))?;
+                        ring.push((x, y));
+                    }
+                    if n < 3 {
+                        return Err(at("an area needs 3 points"));
+                    }
+                    ap.areas.push(Area { kind, ring, name: f.collect::<Vec<_>>().join(" ") });
                 }
                 "" => {}
                 _ => return Err(at("unknown record")),
@@ -198,7 +288,11 @@ impl Airport {
             let _ = writeln!(s, "r {} {} {}", r.ends[0], r.ends[1], r.name);
         }
         for st in &self.stands {
-            let _ = writeln!(s, "{}", named(format!("s {}", st.node), &st.name));
+            let _ = writeln!(s, "{}", named(format!("s {} {}", st.node, st.code), &st.name));
+        }
+        for a in &self.areas {
+            let pts: Vec<String> = a.ring.iter().map(|(x, y)| format!("{x} {y}")).collect();
+            let _ = writeln!(s, "{}", named(format!("p {} {} {}", a.kind, a.ring.len(), pts.join(" ")), &a.name));
         }
         for h in &self.holds {
             let _ = writeln!(s, "{}", named(format!("h {}", h.node), &h.name));
@@ -315,15 +409,48 @@ mod tests {
 
     #[test]
     fn bad_files_fail_with_a_line_number() {
-        let head = "twr-airport 1\nn 0 0\nn 10 0\n";
+        let head = "twr-airport 2\nn 0 0\nn 10 0\n";
         assert!(Airport::parse("twr-airport 0\n").unwrap_err().contains("line 1"));
         let e = Airport::parse(&format!("{head}e 0 2 t A\n")).unwrap_err();
         assert!(e.starts_with("line 4: node index out of range"), "{e}");
         assert!(Airport::parse(&format!("{head}e 0 1 q A\n")).unwrap_err().contains("bad edge kind"));
         assert!(Airport::parse(&format!("{head}z\n")).unwrap_err().contains("unknown record"));
-        let ok = Airport::parse(&format!("{head}e 0 1 t Bay 7\ns 1 Stand 12A\n")).unwrap();
+        let ok = Airport::parse(&format!("{head}e 0 1 t Bay 7\ns 1 E Stand 12A\n")).unwrap();
         assert_eq!(ok.edges[0].name, "Bay 7");
-        assert_eq!(ok.stands[0].name, "Stand 12A");
+        assert_eq!((ok.stands[0].name.as_str(), ok.stands[0].code), ("Stand 12A", 'E'));
+        // B10: a stand line carries its code letter, A-F or '-'.
+        assert!(Airport::parse(&format!("{head}s 1 Stand 12A\n")).unwrap_err().contains("stand code"));
         assert_eq!(ok.edge_len_m(&ok.edges[0]), 1.0);
+    }
+
+    #[test]
+    fn area_label_sits_inside_a_v_shape() {
+        // A V, 100 m arms 20 m thick: its vertex mean lies in the notch.
+        let v = Area { kind: 't', name: String::new(), ring: vec![(0, 0), (1000, 0), (1000, 1000), (800, 1000), (800, 200), (0, 200)] };
+        let n = v.ring.len() as f64;
+        let mean = (v.ring.iter().map(|p| f64::from(p.0)).sum::<f64>() / n / 10.0, v.ring.iter().map(|p| f64::from(p.1)).sum::<f64>() / n / 10.0);
+        let (x, y) = v.label_point();
+        assert!(mean.0 < 80.0 && mean.1 > 20.0, "the test shape's mean {mean:?} must be in the notch");
+        assert!((x >= 80.0 && y <= 100.0) || y <= 20.0, "label at ({x:.1}, {y:.1}) is outside the V");
+        assert!(x <= 100.0 && y >= 0.0);
+    }
+
+    /// R1.23: a corrupt point count must fail with a message, not allocate.
+    #[test]
+    fn area_point_count_is_checked_before_allocating() {
+        let head = format!("{FORMAT}\nicao TEST\nosm_base x\norigin 0 0\n");
+        let err = Airport::parse(&format!("{head}p a 4000000000000 0 0 10 0 10 10\n")).unwrap_err();
+        assert!(err.contains("point count 4000000000000") && err.contains("only 3 points"), "{err}");
+        // Too few points on the line, the count itself small.
+        let err = Airport::parse(&format!("{head}p t 4 0 0 10 0 10 10\n")).unwrap_err();
+        assert!(err.contains("only 3 points"), "{err}");
+        assert!(Airport::parse(&format!("{head}p a 3 0 0 10 0 10 10 Apron 1\n")).is_ok());
+    }
+
+    /// R1.9: a version-1 file fails on the version line, not on a field.
+    #[test]
+    fn old_format_fails_on_the_version() {
+        let err = Airport::parse("twr-airport 1\nicao X\n").unwrap_err();
+        assert!(err.contains("expected 'twr-airport 2'"), "{err}");
     }
 }
