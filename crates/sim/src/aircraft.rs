@@ -339,6 +339,26 @@ impl Aircraft {
         self.weather_ga = None;
     }
 
+    /// Game ticks until this arrival is clear of its runway, by R4's own
+    /// measure: past its vacate point. None for anything that is not an
+    /// arrival still to land, landing, or still between exit node and vacate
+    /// point. Late braking as in `step`: the profile `a9` measures (62.6 s to
+    /// the exit node on 29L) plus the taxi to the vacate point at taxi speed.
+    pub fn ticks_to_clear(&self) -> Option<u64> {
+        let x = self.exit.as_ref()?;
+        let taxi = (x.vacate_mdm - x.at_mdm) / TAXI_MDM_PER_TICK;
+        let roll = |left: u64, v: u64| {
+            let slow = brake_mdm(v);
+            left.saturating_sub(slow) / v + (v - TAXI_MDM_PER_TICK) / LAND_DECEL_MDM
+        };
+        match &self.phase {
+            Phase::Final(_) => Some((-self.air_mdm).max(0) as u64 / LAND_MDM_PER_TICK + roll(x.at_mdm, LAND_MDM_PER_TICK) + taxi),
+            Phase::Landing(_) => Some(roll(x.at_mdm.saturating_sub(self.pos_mdm), self.speed_mdm.max(TAXI_MDM_PER_TICK)) + taxi),
+            Phase::Taxi | Phase::Holding | Phase::HoldPosition if self.arrival && self.pos_mdm < x.vacate_mdm => Some((x.vacate_mdm - self.pos_mdm) / TAXI_MDM_PER_TICK),
+            _ => None,
+        }
+    }
+
     /// Distance to the threshold while on final, metres.
     pub fn final_m(&self) -> f64 {
         (-self.air_mdm).max(0) as f64 / MDM_PER_M as f64

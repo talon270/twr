@@ -75,6 +75,17 @@ in a straight line from the centreline, not after 90 m of taxiway. Before this,
 all 8 default exits stopped it 9 to 51 m from the centreline. The price is
 time on the runway: 29L to Z2 now takes 98 s, up from 75 s.
 
+**The next arrival waits for the runway, not for a distance.** Final spacing
+used to be 3 NM, 79 s at final speed, while the runway stayed occupied up to
+98 s. A player clearing every arrival at 2 km then got 27 runway incidents in
+ten Peak shifts (201 landings). A follower now appears on final only when its
+leader will have cleared the runway 15 s before the follower reaches the
+threshold. The same ten shifts raise 0. The price is a longer wait for a
+slot: at most 3 aircraft waiting, as before, and total waiting on the busiest
+seeds up from about 1.7 to 3.2 aircraft-minutes. When landings fill a runway
+there is no gap to cross it until a lull; `tests/spacing_clear.rs` is the
+check, and the 15 s is `LANDING_CLEAR_BUFFER_S`.
+
 ## The things most tower games get wrong
 
 **Movement is compressed; the traffic rate is not.** Taxi, pushback and the

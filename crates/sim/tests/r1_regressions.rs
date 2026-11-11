@@ -140,8 +140,12 @@ fn r1_3_a_go_around_rejoins_ahead_of_a_standing_queue() {
         w.step_ticks(1);
     }
     println!("R1.3: GA1 rejoined after {ready} ticks ready; {n} queued arrivals spawned meanwhile");
-    // One 3 NM gap at 70 m/s: 5,556 m / 3.5 m per tick, 1,588 ticks.
-    assert!(ready <= 1_600, "GA1 waited {ready} ticks");
+    // Was one 3 NM gap, 1,588 ticks. Since 2026-11-11 a rejoin waits for the
+    // leader to clear the runway (spacing_clear.rs): measured 1,841 ticks
+    // here. The bound is one leader's roll-out plus the 15 s buffer, 2,400:
+    // what this test guards is that the standing queue never takes the slot
+    // (the 30,000 assertion above), not the old distance.
+    assert!(ready <= 2_400, "GA1 waited {ready} ticks");
 }
 
 // ---- R1.4 -------------------------------------------------------------------

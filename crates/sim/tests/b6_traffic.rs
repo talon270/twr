@@ -182,7 +182,17 @@ fn a12_go_around_waits_for_its_slot() {
     let gap = (lead - w.aircraft[a].air_mdm) as f64 / MDM_PER_M as f64;
     println!("IGO1 waited {waited} ticks past its circuit, rejoined {gap:.0} m behind IGO2");
     assert!(waited > 0, "it rejoined on time, on top of IGO2");
-    assert!(gap >= 3.0 * 1852.0 && gap < 3.0 * 1852.0 + 40.0, "rejoined at {gap:.0} m, not the first tick 3 NM opened");
+    // 2026-11-11: it no longer rejoins the first tick 3 NM opens (3.0 NM to
+    // 3.0 NM + 40 m before). It waits until IGO2 will have cleared the runway
+    // LANDING_CLEAR_BUFFER_S before it reaches the threshold, so the gap is
+    // wider than 3 NM, and at the rejoin tick the two times just meet.
+    let eta = (-w.aircraft[a].air_mdm) as u64 / twr_sim::aircraft::LAND_MDM_PER_TICK;
+    let clears = w.aircraft[b].ticks_to_clear().expect("IGO2 is still landing");
+    let buffer = twr_sim::traffic::LANDING_CLEAR_BUFFER_S * u64::from(twr_sim::TICK_HZ);
+    println!("  rejoin ETA {eta} ticks; IGO2 clears the runway in {clears} ticks; buffer {buffer}");
+    assert!(gap >= 3.0 * 1852.0, "rejoined at {gap:.0} m, inside 3 NM");
+    assert!(clears + buffer <= eta + 1, "rejoined with IGO2 {clears} ticks from clear and an ETA of {eta}: closer than the {buffer}-tick buffer");
+    assert!(eta < clears + buffer + 2 * u64::from(twr_sim::TICK_HZ), "rejoined late: ETA {eta}, clear {clears}, buffer {buffer}");
     assert!(w.monitor.incidents.is_empty());
 }
 

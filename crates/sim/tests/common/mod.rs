@@ -52,6 +52,13 @@ pub const ARRIVAL_EVERY: u64 = 120 * 20;
 /// for it this close. A takeoff from rest clears IGI's longest runway in
 /// about 75 s; an arrival 6 km out is 86 s from the threshold.
 pub const PROTECT_M: f64 = 6_000.0;
+/// A crossing keeps this far from an arrival on final, metres. A crossing is
+/// 90 m of hold, a 60 m runway and 90 m again at 10 m/s: 24 s. 3,000 m is
+/// 43 s at final speed. The 6 km a takeoff needs (above) starved crossings
+/// once final spacing waited for the leader to clear the runway
+/// (2026-11-11): arrivals on 28 went around for a blocked exit, and the
+/// exit stayed blocked because a crosser waited for those arrivals.
+pub const CROSS_PROTECT_M: f64 = 3_000.0;
 pub const MAX_ACTIVE: usize = 14;
 pub const HOUR: u64 = 3600 * 20;
 /// LVP: C no earlier than this far out. The deadline is 3,704 m and the
@@ -506,7 +513,7 @@ impl Ctl {
             // Crossings keep PROTECT_M; a line-up waits for any arrival on
             // final for this runway, so the departure lines up behind its
             // landing roll instead of sending it around.
-            if arrival_near(w, r, if at_entry { f64::INFINITY } else { PROTECT_M }) {
+            if arrival_near(w, r, if at_entry { f64::INFINITY } else { CROSS_PROTECT_M }) {
                 continue;
             }
             if !at_entry {

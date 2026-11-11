@@ -40,6 +40,11 @@ const NM_M: u64 = 1_852;
 /// Least spacing on final, any pair: 3 NM, the radar minimum. `memory`:
 /// Doc 4444 8.7.3.2, not checked against the text.
 pub const FINAL_MIN_NM: u64 = 3;
+/// A follower reaches the threshold at least this long after its leader has
+/// left the runway, game seconds: the room a controller needs to see the
+/// runway clear and say C. Authored, not measured; 15 s is two looks at the
+/// 20-tick controller pass with margin.
+pub const LANDING_CLEAR_BUFFER_S: u64 = 15;
 
 /// Distance-based wake minimum on final, NM, leader then follower; 0 where
 /// only the radar minimum applies. `memory`: Doc 4444 8.7.3.4, unchecked.
@@ -414,7 +419,28 @@ impl World {
     pub fn final_free(&self, desig: &str, wake: Wake) -> bool {
         let min_nm = if self.monitor.lvp { crate::lvp::LVP_FINAL_MIN_NM } else { FINAL_MIN_NM };
         final_slot_free(&self.aircraft, desig, wake, min_nm)
+            && self.leaders_clear_in_time(desig)
             && self.monitor.lsa_occupant(&self.aircraft, &self.airport, &self.graph, desig, None).is_none()
+    }
+
+    /// The runway must be clear, by R4's measure, before a follower spawned
+    /// now reaches the threshold: every arrival still to land on, landing on,
+    /// or still between exit node and vacate point of `desig`'s runway has to
+    /// clear it LANDING_CLEAR_BUFFER_S before the follower's ETA. The 3 NM
+    /// distance gate alone is 79 s at final speed, and a long vacate takes 98 s
+    /// (29L to Z2): a player clearing every arrival at 2 km then got 27 runway
+    /// incidents in ten Peak shifts (spacing_clear.rs), none of them a choice.
+    fn leaders_clear_in_time(&self, desig: &str) -> bool {
+        let Some(rwy) = self.monitor.dirs.iter().find(|d| d.desig == desig).map(|d| d.rwy) else { return true };
+        let eta = (FINAL_SPAWN_M * MDM_PER_M / crate::aircraft::LAND_MDM_PER_TICK).saturating_sub(LANDING_CLEAR_BUFFER_S * TICK_HZ as u64);
+        self.aircraft.iter().all(|a| {
+            let same = match &a.phase {
+                Phase::Final(d) | Phase::Landing(d) => d == desig,
+                Phase::Taxi | Phase::Holding | Phase::HoldPosition => crate::conflict::on_runway(a, &self.airport, &self.graph) == Some(rwy),
+                _ => false,
+            };
+            !same || a.ticks_to_clear().is_none_or(|t| t <= eta)
+        })
     }
 
     /// The flow in use: the runway plan's, or the wind's in Practice.
