@@ -176,6 +176,7 @@ fn r1_4_lining_up_into_an_occupied_spot_is_a_ground_incident() {
     let e = entry(&w0, "29L", true).unwrap();
     let r = route_to_entry(&w0, e);
     let mut w = empty();
+    w.auto_stop = false;
     let two = held_short_at_end(&mut w, "TWO", r);
     w.add_lined_up("ONE", Wake::M, e).unwrap();
     w.line_up(two).unwrap();

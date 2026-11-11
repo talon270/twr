@@ -436,7 +436,9 @@ impl Aircraft {
 
     // ---- Movement ----------------------------------------------------------
 
-    pub(crate) fn step(&mut self, ap: &Airport, g: &Graph) {
+    /// `behind`: route distance this aircraft may not pass because another one
+    /// sits ahead on its route (`conflict::follow_caps`).
+    pub(crate) fn step(&mut self, ap: &Airport, g: &Graph, behind: Option<u64>) {
         match &self.phase {
             Phase::Final(d) => {
                 let out = (-self.air_mdm) as u64;
@@ -501,7 +503,7 @@ impl Aircraft {
             _ => return,
         };
         let stop = self.stop.as_ref().filter(|_| self.phase == Phase::Taxi).map(|s| s.at_mdm);
-        let cap = self.limit.as_ref().map(|(lim, _)| *lim).into_iter().chain(self.push_to).chain(stop).min();
+        let cap = self.limit.as_ref().map(|(lim, _)| *lim).into_iter().chain(self.push_to).chain(stop).chain(behind).min();
         let go = cap.map_or(v, |c| v.min(c - self.pos_mdm));
         self.advance(go, g);
         if self.push_to == Some(self.pos_mdm) {
@@ -1418,6 +1420,51 @@ mod tests {
 
     /// An OSM holding point on the route is where the aircraft stops; with
     /// none, it stops HOLD_SHORT_M before the runway node.
+    /// A taxiing aircraft stops on its own FOLLOW_GAP_M behind one stood on
+    /// its route, raises no ground incident, and sets off again alone once
+    /// the leader has gone.
+    #[test]
+    fn a_follower_stops_behind_a_stopped_leader_and_resumes() {
+        let mut w = World::new(1);
+        let (ap, g) = (&w.airport, &w.graph);
+        let mut pick = None;
+        'search: for s in &ap.stands {
+            let link = ap.edges.iter().find(|e| e.kind == EdgeKind::StandLink && (e.a == s.node || e.b == s.node)).unwrap();
+            let from = if link.a == s.node { link.b } else { link.a };
+            for to in ap.runway_exits() {
+                if let Some(r) = g.plan(ap, &Request { from, to, ..Default::default() })
+                    && hold_limits(ap, g, &r, 0, 0).first().is_none_or(|l| l.0 > 400 * MDM_PER_M)
+                {
+                    pick = Some((s.node, to));
+                    break 'search;
+                }
+            }
+        }
+        let (stand, entry) = pick.expect("a stand with 400 m of taxiway before any hold line");
+        w.aircraft[0] = Aircraft::parked("IGO512", stand);
+        w.push(0).unwrap();
+        run_until(&mut w, 100_000, |a| a.phase == Phase::Holding);
+        let route = w.plan(0, entry, &[], &[]).unwrap();
+        w.taxi(0, route).unwrap();
+
+        let mut lead = w.aircraft[0].scratch();
+        lead.callsign = "LEAD1".into();
+        lead.advance(150 * MDM_PER_M, &w.graph);
+        lead.phase = Phase::HoldPosition;
+        w.aircraft.push(lead);
+
+        w.step_ticks(3_000);
+        let (f, l) = (&w.aircraft[0], w.aircraft.last().unwrap());
+        assert_eq!(f.phase, Phase::Taxi, "stopped by the gap, not held");
+        assert_eq!(f.pos_mdm, l.pos_mdm - 60 * MDM_PER_M, "stops FOLLOW_GAP_M behind");
+        assert!(w.monitor.incidents.is_empty(), "{:?}", w.monitor.incidents);
+
+        w.aircraft.pop();
+        let at = w.aircraft[0].pos_mdm;
+        w.step_ticks(40);
+        assert!(w.aircraft[0].pos_mdm > at, "sets off again once the way is clear");
+    }
+
     #[test]
     fn hold_short_uses_the_osm_holding_point_when_there_is_one() {
         let w = World::new(1);

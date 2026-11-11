@@ -55,6 +55,7 @@ fn reversed(r: &Route) -> Route {
 #[test]
 fn ground_nose_to_tail() {
     let mut w = empty();
+    w.auto_stop = false;
     let r = taxi_route(&w, 900.0).expect("a long runway-free route");
     let k = (1..r.nodes.len()).find(|&k| cum_m(&w, &r, k) >= 500.0).unwrap();
     let lead_mdm = (cum_m(&w, &r, k) * 10.0) as u64 * 1000;
@@ -89,6 +90,7 @@ fn ground_nose_to_tail() {
 #[test]
 fn ground_head_on() {
     let mut w = empty();
+    w.auto_stop = false;
     let r = taxi_route(&w, 900.0).unwrap();
     let a = w.add(holding_at("WEST", r.nodes[0]));
     let b = w.add(holding_at("EAST", r.end()));
@@ -196,6 +198,7 @@ fn ground_pushback_into_a_passer() {
     let want = 10.0 * (link_m - 10.0).max(0.0);
     let i0 = (0..k).min_by_key(|&i| ((cum_m(&w0, &r, k) - cum_m(&w0, &r, i)) - want).abs() as i64).unwrap();
     let mut w = empty();
+    w.auto_stop = false;
     let p = w.add(Aircraft::parked("PUSH", stand));
     let b = w.add(holding_at("PASS", r.nodes[i0]));
     w.push(p).unwrap();

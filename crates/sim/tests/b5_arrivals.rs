@@ -155,6 +155,7 @@ fn a10_departure_on_the_tick_the_arrival_vacates() {
 #[test]
 fn a11_exit_into_a_stopped_aircraft() {
     let mut w = empty();
+    w.auto_stop = false;
     let a = arrival(&mut w, "ARR", "29L", 0);
     let end = w.aircraft[a].route.end();
     w.add(Aircraft { phase: Phase::Holding, ..Aircraft::parked("STOP", end) });

@@ -160,6 +160,7 @@ impl World {
                 w.aircraft[i].air_mdm = -2_000 * crate::aircraft::MDM_PER_M as i64;
             }
             "ground" => {
+                w.auto_stop = false;
                 let r = taxi_route(&w, 900.0)?;
                 // Stop the leader at the first node 500 m or more along.
                 let mut s = 0.0;

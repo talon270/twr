@@ -156,6 +156,10 @@ pub struct World {
     /// The world stops on the tick the shift ends (B7). Long-run tests turn
     /// this off to watch the controller finish what the shift gave it.
     pub halt_on_end: bool,
+    /// Taxiing aircraft stop `FOLLOW_GAP_M` behind one ahead on their route
+    /// (`conflict::follow_caps`). Tests of the ground monitor and the "ground"
+    /// scenario turn it off to stage the collision it would prevent.
+    pub auto_stop: bool,
 }
 
 impl World {
@@ -176,7 +180,7 @@ impl World {
         let airport = Airport::parse(VIDP).expect("baked VIDP parses; airport tests guard this");
         let graph = Graph::new(&airport);
         let monitor = Monitor::new(&airport);
-        World { seed, clock: Clock::default(), rng: Rng::new(seed), airport, graph, aircraft: Vec::new(), tick: 0, monitor, go_arounds: Vec::new(), traffic: None, score: Score::default(), halt_on_end: true }
+        World { seed, clock: Clock::default(), rng: Rng::new(seed), airport, graph, aircraft: Vec::new(), tick: 0, monitor, go_arounds: Vec::new(), traffic: None, score: Score::default(), halt_on_end: true, auto_stop: true }
     }
 
     /// Put an arrival on final for `desig`, with its pilot go-around drawn.
@@ -248,10 +252,11 @@ impl World {
             }
             self.tick += 1;
             let (mut landed, mut around) = (Vec::new(), Vec::new());
+            let behind = if self.auto_stop { conflict::follow_caps(&self.aircraft, &self.graph) } else { vec![None; self.aircraft.len()] };
             for (i, a) in self.aircraft.iter_mut().enumerate() {
                 let was = matches!(a.phase, Phase::Airborne(_));
                 let was_final = matches!(a.phase, Phase::Final(_));
-                a.step(&self.airport, &self.graph);
+                a.step(&self.airport, &self.graph, behind[i]);
                 if !was && matches!(a.phase, Phase::Airborne(_)) {
                     self.score.movements += 1;
                     let at = a.pos_m(&self.airport, &self.graph);

@@ -282,6 +282,30 @@ fn gap_ahead(mv: &Aircraft, path: &[(u32, u64, Option<u32>)], o: &Spot) -> Optio
     best
 }
 
+/// Centre-to-centre gap a taxiing aircraft keeps behind another, m. Over
+/// GROUND_MIN_M (45), so stopping behind a leader never raises G1 by itself.
+pub const FOLLOW_GAP_M: u64 = 60;
+
+/// Per aircraft: the route distance it may not pass this tick, because
+/// another aircraft on the network sits ahead of it on its route. None for
+/// anything not moving on the ground, and for a clear route. The aircraft
+/// stays in `Taxi`, so it sets off again alone once the leader has gone.
+pub fn follow_caps(ac: &[Aircraft], g: &Graph) -> Vec<Option<u64>> {
+    let cap = (GROUND_WARN_M + BODY_M) * MDM_PER_M;
+    let spots: Vec<Option<Spot>> = ac.iter().map(|a| on_ground_net(a).then(|| spot(a, g))).collect();
+    ac.iter()
+        .enumerate()
+        .map(|(i, a)| {
+            if !(on_ground_net(a) && ground_mover(a)) {
+                return None;
+            }
+            let path = path_ahead(a, g, cap);
+            let gap = (0..ac.len()).filter(|&j| j != i).filter_map(|j| gap_ahead(a, &path, spots[j].as_ref()?)).min()?;
+            Some(a.pos_mdm + gap.saturating_sub(FOLLOW_GAP_M * MDM_PER_M))
+        })
+        .collect()
+}
+
 // ---- The monitor ------------------------------------------------------------
 
 /// One takeoff, for the wake checks that follow it.
