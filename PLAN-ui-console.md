@@ -140,3 +140,33 @@ Script changes: the hint, verbs, via and notice selectors in b2, b3, b4, b5, c1,
 **Next:** this plan is finished. `PLAN-lvp.md` is next in the folder, unapproved, with two open questions.
 
 Nothing is committed.
+
+## Built 2026-11-11: orders, attention, parked, stands, dark contrast
+
+Requested in one message and built the same day without a separate approval, because the user asked to "run it". Backup: `web/shell.backup-20261111-*.html`. Nothing is committed.
+
+| Item | State | Proof |
+|---|---|---|
+| Dark contrast | **Built.** Raised the weak pairs against `#000`: `--hair` 1.98 to 3.91:1, `--line` (runways) 1.47 to 3.07, `--dim` text 6.11 to 9.28, `--term` 1.91 to 2.71, `--apron` 1.34 to 1.55. White on black stays 21:1. **Assumption:** "change the contrast" read as "raise the weak pairs"; if glare was the complaint, soften `--fg` and `--bg` instead (a comment in `shell.html` says so) | `verify_ui5` 29/29; `verify_ui3` 38/38 after its hairline bound moved |
+| Ground verbs | **Built by Codex (`gpt-6-astra`), merged by me.** Hold at a point (J, click a marked point), give way (Y, click an aircraft), continue, slower, faster, expedite, backtrack, cross if clear: key, panel button, and radio words. Research: `research/out/ground-commands/REPORT.md` (12 ranked gaps, each graded primary / secondary / recalled). Codex hit its usage limit before it wrote its hand-off | `verify_c3` 286/286 on its first run; `u1_c3_radio` 6/6; `c3_verbs` 7/7 |
+| Stand highlight and type line | **Built.** A landed arrival selected: only free stands that take its code are marked (filled square and ring), and the panel counts them. Every card has `A20N · code C · wake M` | `verify_ui5` |
+| Parked | **Built.** `OnStand` and not requesting: bay 4, full width | `verify_c1` 22/22 (updated) |
+| Needs you | **Built.** Bay 5 above all others; levels 1 to 3; `Waiting` and `Act now` tags; flash by JS at 2 Hz, steady under reduced motion. **This overrides A5 (no looping pulse) and widens A4: red now also means "act now".** The user asked for the flash | `verify_ui5`: levels at 0 s, 16 s, 41 s; two tints over 2 s; one under reduced motion |
+
+**Known limit:** a card that changes box moves under the pointer, and a click at that instant can be swallowed (the same cause `verify_ui5` tripped on twice in six runs). It happens only when a card changes level or box.
+**Hook:** `body[data-noattn]` switches the Needs you box off so `verify_c1` can test the bays alone.
+**Unconfirmed:** `verify_lvp` crashed once ("Target crashed") while three browser scripts and `cargo test` ran at once; 23/23 alone. `verify_b2`'s zoom check was off by 0.3 px once under the same load; 29/29 alone.
+
+### Ranked gaps from the ground-commands report, built 2026-11-11 (second pass)
+
+| Row | Gap | State |
+|---|---|---|
+| 1 | Typed taxi route | **Built.** `TAXI TO STAND <name>` or `TAXI TO RUNWAY <designator>`, then optional `VIA <taxiway> ...`. Names come from the graph; a VIA name picks, per taxiway, the edge that makes the route shortest (the click the map builder would take). 24 names offered before a letter is typed, all after. `tests/u2_taxi_radio.rs` 3/3, `verify_radio2.py` 18/18 |
+| 6 | Cross: explicit runway | **Built.** `CROSS RUNWAY <designator>` only for the runway held short of; any other is refused with the runway named. `CROSS IF CLEAR` and its button were already there |
+| 7 | Named stand grammar | **Built** as part of row 1; offered stands are the ones that take the aircraft's code |
+| 3, 5, 8, 9 | Hold, give way, speed, backtrack | Built earlier the same day (Codex), `verify_c3` 286/286 |
+| 2, 4, 10, 11, 12 | Frequency handoff, start-up approval, report vacated, hold by direction/distance, cancel take-off | **Not built.** 2 and 4 need a new state (who owns the aircraft; start-up before push); 12 needs an aborted-roll behaviour in the sim; 11 needs an offset hold the node-based stop cannot express; 10 needs an event log. Each is its own plan. Follow (row 5's remainder) is also not built |
+
+**Stand highlight, changed after looking at it:** with 268 of 270 stands qualifying (code C), every stand lit and the mark meant nothing. Over 60 qualifying stands now get a smaller square with no ring; 60 or fewer (code E or F) keep square and ring. Never seen with a code E aircraft: Practice flies only A20N.
+**probe.html, changed after running it:** a pick now moves to the next pair and the arrow keys move between pairs; before, the A/B/N keys alone could not leave pair 1. 30/30 in Chromium at 1920 and 1500, both themes, reduced motion.
+**perf_80, 2026-11-11, new UI, one run, load 4:** `app.frame` median 3.9 / 3.9 / 4.3 ms parked, 4.7 / 4.9 moving (60 pushing), 4.1 / 4.0 / 5.3 ms under LVP; 0 page errors. No slower than the 4.2 to 5.1 ms before the change.

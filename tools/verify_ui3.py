@@ -61,7 +61,10 @@ with sync_playwright() as pw:
             .filter(e => parseFloat(getComputedStyle(e).fontSize) < 12 && getComputedStyle(e).textTransform !== 'uppercase').map(e => e.id || e.className)""")
         check(not small, f"{tag} no mixed-case text under 12 px: {small[:6]}")
         hair = css(pg, "#bay .baybox", "borderTopColor"); pbg = css(pg, "#strips", "backgroundColor")
-        check(1.6 <= cr(hair, pbg) <= 3, f"{tag} bay hairline {hair} on rack {pbg}: {cr(hair, pbg):.2f}:1")
+        # Dark was lifted to about 3.7:1 on 2026-11-11 (the user asked for a
+        # change to dark contrast); light stays near 2:1.
+        lo, hi = (3, 5) if "dark" in tag else (1.6, 3)
+        check(lo <= cr(hair, pbg) <= hi, f"{tag} bay hairline {hair} on rack {pbg}: {cr(hair, pbg):.2f}:1")
         over = pg.evaluate("(() => { const b = document.querySelector('.bar'); return b.scrollWidth - b.clientWidth; })()")
         check(over <= 0, f"{tag} header fits ({over} px over)")
         pg.screenshot(path=str(OUT / f"s3-{theme}-{w}.png"))
@@ -88,7 +91,10 @@ with sync_playwright() as pw:
         # pixel test: the bar's colour on screen at the strip's left edge, requesting or not
         for i in (lead, tail):
             r = pg.locator(f"#strip{i}").bounding_box()
-            px = pg.screenshot(clip={"x": r["x"] + 1, "y": r["y"] + r["height"] / 2, "width": 1, "height": 1})
+            # A card in "Needs you" has a 6 px attention border; the alarm bar
+            # is the 4 px just inside it, so read one pixel in from the border.
+            bw = float(css(pg, f"#strip{i}", "borderLeftWidth").replace("px", "") or 0)
+            px = pg.screenshot(clip={"x": r["x"] + bw + 1, "y": r["y"] + r["height"] / 2, "width": 1, "height": 1})
             import io
             from PIL import Image
             c = list(Image.open(io.BytesIO(px)).convert("RGB").getpixel((0, 0)))

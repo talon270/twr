@@ -42,7 +42,20 @@
   :root { --sans: "Liberation Sans", Arial, "Helvetica Neue", Helvetica, sans-serif;
           --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", monospace;
           --hair: #b8b8bc; }
-  :root[data-theme="dark"] { --hair: #3e3e44; }
+  /* Dark contrast, 2026-11-11 (the user asked to change it; the weak pairs
+     were measured, not guessed). Against #000: --hair 1.98 -> 3.91:1,
+     --line (runways) 1.47 -> 3.07:1, --dim text 6.11 -> 9.28:1, --term
+     1.91 -> 2.71:1, --apron 1.34 -> 1.55:1 (a fill, kept quiet). White
+     text on black stays 21:1; if glare is the complaint, soften --fg and
+     --bg here instead. */
+  :root[data-theme="dark"] { --hair: #6a6a70; }
+  /* Attention (2026-11-11): a card that waits on you is green, then yellow,
+     then red and flashing. They colour a bar and a tint, never text, so
+     the words stay --fg; each state also has a word on the card. 3:1 or
+     better against the page in both themes. Red is --red: it now also
+     means "act now", not only a conflict. */
+  :root { --attn-ok: #1a7f37; --attn-warn: #9a6700; --attn-now: #d71921; }
+  :root[data-theme="dark"] { --attn-ok: #3fb950; --attn-warn: #e3b341; --attn-now: #ff4d55; }
   :root { --fg: #000; --bg: #fff; --dim: #585a5a; --line: #c4c6c8; --red: #d71921; --red-text: #d71921; --panel: #f4f4f5;
           --apron: #dddde0; --term: #bfc0c5;
           --elev: #fff; --elev-dim: #585a5a; --scrim: rgb(0 0 0 / .45); }
@@ -52,8 +65,8 @@
      and its dim text #d0d0d4 4.7:1. */
   /* --apron, --term (B10): map fills under the network. Apron 1.36:1 light,
      1.34:1 dark against --bg; --dim taxi lines keep at least 3.19:1 on both. */
-  :root[data-theme="dark"] { --fg: #fff; --bg: #000; --dim: #8a8a8e; --line: #2a2a2c; --red: #d71921; --red-text: #ff4d55; --panel: #0b0b0c;
-          --apron: #232327; --term: #3c3c41;
+  :root[data-theme="dark"] { --fg: #fff; --bg: #000; --dim: #acacb0; --line: #5a5a60; --red: #d71921; --red-text: #ff4d55; --panel: #0b0b0c;
+          --apron: #2e2e33; --term: #52525a;
           --elev: #57575b; --elev-dim: #d0d0d4; --scrim: rgb(0 0 0 / .6); }
 
   * { box-sizing: border-box; }
@@ -134,7 +147,7 @@
   #conflicts { border-left: 1px solid var(--hair); }
   #sel .head { display: flex; align-items: baseline; gap: 12px; }
   #sel-cs { font-weight: 700; font-size: 16px; }
-  #sel-wake, #sel-tel { color: var(--dim); font-size: 12px; }
+  #sel-wake, #sel-code, #sel-tel { color: var(--dim); font-size: 12px; }
   #sel-hint { color: var(--dim); font-size: 12px; }
   #sel-ask { font-weight: 700; }
   #sel-ask:empty, #sel-via:empty, #sel-note:empty, #sel-notice:empty, #sel-hint:empty { display: none; }
@@ -187,6 +200,28 @@
   .baybox { display: flex; flex-direction: column; min-width: 0; max-height: 40vh; overflow-y: auto;
             border: 1px solid var(--hair); border-radius: 8px; background: var(--bg); }
   .strip { cursor: pointer; }
+  /* Parked, and the "needs you" box above all the others, each full width.
+     DOM order is bay index; the grid puts Needs you first. */
+  .baybox[data-bay="4"], .baybox[data-bay="5"] { grid-column: 1 / -1; }
+  .baybox[data-bay="5"] { order: -1; }
+  .baybox[data-bay="5"] .strip { border-left: 6px solid var(--attn-ok); padding-left: 8px; }
+  .baybox[data-bay="5"] .strip[data-attn="2"] { border-left-color: var(--attn-warn); }
+  .baybox[data-bay="5"] .strip[data-attn="3"] { border-left-color: var(--attn-now); }
+  .strip .type { grid-column: 1 / -1; color: var(--dim); font-size: 12px; }
+  .strip.sel .type { color: inherit; }
+  .strip .tag { grid-column: 1 / -1; font-weight: 700; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
+  .strip .tag:empty { display: none; }
+  /* The tint is the card's own layer, as the request tint is. Level 3
+     flashes: JS flips body[data-flash] every 500 ms (2 Hz is under the 3
+     flashes a second the WCAG flash limit allows), and nothing flips under
+     reduced motion, which leaves the strong tint on. */
+  .strip[data-attn] { position: relative; isolation: isolate; }
+  .strip[data-attn]::before { content: ""; position: absolute; inset: 0; z-index: -1;
+                              background: color-mix(in srgb, var(--attn-ok) 16%, var(--bg)); }
+  .strip[data-attn="2"]::before { background: color-mix(in srgb, var(--attn-warn) 22%, var(--bg)); }
+  .strip[data-attn="3"]::before { background: color-mix(in srgb, var(--attn-now) 38%, var(--bg)); }
+  body[data-flash="0"] .strip[data-attn="3"]::before { background: var(--bg); }
+  .strip.sel[data-attn]::before { display: none; }
   main { position: relative; }
   .attr { position: absolute; left: 12px; bottom: calc(var(--ctx-h) + 8px); font-size: 12px; color: var(--dim); pointer-events: none; }
   .saved { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; visibility: hidden; }
@@ -309,6 +344,8 @@
                  text-transform: uppercase; }
   .radio .next { display: flex; flex-wrap: wrap; gap: 6px; flex: 2 1 320px; min-height: 44px; align-items: center; }
   .radio .next button { min-width: 44px; }
+  /* C3 verbs use the panel's existing data-key and pointerdown handlers. */
+  #sel-verbs button[data-key] { min-height: 44px; }
   .radio input::placeholder { text-transform: none; color: var(--dim); }
   .radio .said { flex: 1 1 100%; font-size: 12px; min-height: 1em; }
   .radio .said:empty { display: none; }
@@ -374,7 +411,7 @@
          pointer. One copy, for the selected aircraft only. -->
     <div id="ctx">
       <section id="sel" aria-label="Selected aircraft">
-        <div class="head"><span id="sel-cs">-</span><span id="sel-wake"></span><span id="sel-tel"></span></div>
+        <div class="head"><span id="sel-cs">-</span><span id="sel-wake"></span><span id="sel-code"></span><span id="sel-tel"></span></div>
         <span id="sel-state"></span>
         <span id="sel-ask"></span>
         <span id="sel-note"></span>
@@ -416,6 +453,8 @@
         <section class="baybox" data-bay="1"><button type="button" class="bayhead empty" data-bay="1" aria-expanded="true"><span><span class="chev" aria-hidden="true">▾</span>Ground</span><span class="n">0</span></button></section>
         <section class="baybox" data-bay="2"><button type="button" class="bayhead empty" data-bay="2" aria-expanded="true"><span><span class="chev" aria-hidden="true">▾</span>Runway</span><span class="n">0</span></button></section>
         <section class="baybox" data-bay="3"><button type="button" class="bayhead empty" data-bay="3" aria-expanded="true"><span><span class="chev" aria-hidden="true">▾</span>Landings</span><span class="n">0</span></button></section>
+        <section class="baybox" data-bay="4"><button type="button" class="bayhead empty" data-bay="4" aria-expanded="true"><span><span class="chev" aria-hidden="true">▾</span>Parked</span><span class="n">0</span></button></section>
+        <section class="baybox" data-bay="5"><button type="button" class="bayhead empty" data-bay="5" aria-expanded="true"><span><span class="chev" aria-hidden="true">▾</span>Needs you</span><span class="n">0</span></button></section>
       </div>
       <div class="label">Incidents <span class="val" id="inc-count">0</span></div>
       <ol class="log" id="incidents" aria-live="polite"></ol>
@@ -448,7 +487,9 @@
     <template id="strip-tpl">
       <div class="strip">
         <span class="cs" data-k="cs">-</span><span class="num" data-k="wake"></span>
+        <span class="type" data-k="type"></span>
         <span class="state" data-k="state">-</span>
+        <span class="tag" data-k="tag"></span>
         <span class="ask" data-k="ask"></span>
         <span class="alert" data-k="alert"></span>
         <span class="note" data-k="note"></span>
@@ -572,6 +613,12 @@ window.TWR = (() => {
   // The page only sorts raw events into drag, click, wheel and key; what
   // they mean is decided in the wasm App.
   const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  // Level-3 cards flash at 2 Hz (css: body[data-flash]); under reduced
+  // motion the flag stays "1", so the strong red tint is steady.
+  document.body.dataset.flash = "1";
+  setInterval(() => {
+    document.body.dataset.flash = reduce.matches || document.body.dataset.flash === "0" ? "1" : "0";
+  }, 500);
   let paused = false;
   // Under this many CSS px of travel a press is a click, not a drag.
   const CLICK_SLOP_PX = 4;
@@ -771,7 +818,7 @@ window.TWR = (() => {
     const sel = app.selected_callsign();
     // Strips of aircraft that have left go, in Practice too: a departed or
     // shut-down strip is a card you can do nothing with.
-    const groups = [[], [], [], []];
+    const groups = [[], [], [], [], [], []];
     let selI = -1;
     const pairs = new Map();
     for (let i = 0; i < n; i++) {
@@ -780,7 +827,17 @@ window.TWR = (() => {
       const cs = app.callsign(i);
       if (sel === cs) selI = i;
       if (gone) continue;
-      groups[app.bay_of(i)].push([app.bay_key(i), i]);
+      // Needs you: any card that waits on you leaves its bay for the top
+      // box, loudest and longest-waiting first (App::attention_level).
+      // body[data-noattn] switches the box off for verify_c1.py, which tests the bays alone.
+      const lvl = document.body.dataset.noattn ? 0 : app.attention_level(i);
+      if (lvl > 0) groups[5].push([app.attention_key(i), i]);
+      else groups[app.bay_of(i)].push([app.bay_key(i), i]);
+      const stripEl = el("strip" + i);
+      if (lvl > 0) stripEl.dataset.attn = String(lvl); else delete stripEl.dataset.attn;
+      setText("tag" + i, lvl === 3 ? "Act now" : lvl === 2 ? "Waiting" : "");
+      const wk = app.wake(i).split(" "), code = app.code_letter(i);
+      setText("type" + i, `${wk[0]} · ${code ? "code " + code : "no code"} · wake ${wk[1] || "-"}`);
       setText("cs" + i, cs);
       setText("wake" + i, app.wake(i));
       setText("state" + i, app.strip_state(i));
@@ -857,12 +914,13 @@ window.TWR = (() => {
     el("sel").dataset.i = String(i);
     setText("sel-cs", on ? app.callsign(i) : "-");
     setText("sel-wake", on ? app.wake(i) : "");
+    setText("sel-code", on && app.code_letter(i) ? "code " + app.code_letter(i) : "");
     setText("sel-tel", on ? app.telephony(i).split(" · ")[0] : "");
     setText("sel-state", on ? app.strip_state(i) : "");
     setText("sel-ask", on ? app.request_text(i) : "");
     setText("sel-note", on ? app.strip_note(i) : "");
     const via = on ? app.via_names() : "";
-    setText("sel-via", via ? "Via " + via : "");
+    setText("sel-via", via ? "Via " + via : on ? app.stand_note(i) : "");
     setVerbs(on ? app.verb_buttons(i) : []);
     setText("sel-hint", app.hint());
     setText("sel-notice", app.notice());

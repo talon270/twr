@@ -29,6 +29,7 @@ use twr_sim::conflict::INCIDENT_MARK_S;
 use twr_sim::route::Route;
 use twr_sim::traffic::{SHIFT_REAL_S, TICKS_PER_REAL_S};
 use twr_sim::{Phase, World, TICK_HZ};
+use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
@@ -77,6 +78,8 @@ impl Camera {
 
 enum Mode {
     Idle,
+    HoldAt,
+    GiveWay,
     /// Building a taxi clearance for the selected aircraft.
     Taxi { dest: Option<u32>, via: Vec<u32>, avoid: Vec<u32>, preview: Option<Route>, note: String },
     /// After E: the next click picks the selected arrival's exit.
@@ -110,6 +113,18 @@ fn install_panic_hook() {
     }));
 }
 
+/// How long a card that needs you may wait before it turns yellow, then red
+/// and flashing, in real seconds (game time: a paused shift does not age
+/// it). 15 s is about two glances at the map; 40 s is long enough that a
+/// departure has missed its slot. Authored, not measured: change them here.
+const ATTN_YELLOW_REAL_S: u64 = 15;
+const ATTN_RED_REAL_S: u64 = 40;
+/// A landing clearance turns urgent this far (metres) before the decision
+/// point: 1,500 m is about 21 game s, or 7 real s, at final speed.
+const ATTN_FINAL_LEAD_M: f64 = 1_500.0;
+/// Up to this many qualifying stands get a ring as well as a square.
+const STAND_RING_MAX: usize = 60;
+
 #[wasm_bindgen]
 pub struct App {
     world: World,
@@ -136,6 +151,9 @@ pub struct App {
     /// strip shows. The page rebuilds strips only when it moves, so a paused
     /// or ended shift costs no strip work at all.
     rev: u32,
+    /// The tick each aircraft (by callsign) first needed you, while it still
+    /// does. Its age drives the green, yellow and red of the card.
+    attn: HashMap<String, u64>,
 }
 
 #[wasm_bindgen]
@@ -175,6 +193,7 @@ impl App {
             notice: String::new(),
             after_push: None,
             rev: 0,
+            attn: HashMap::new(),
         })
     }
 
@@ -195,6 +214,7 @@ impl App {
         if steps > 0 {
             self.rev = self.rev.wrapping_add(1);
         }
+        self.track_attention();
         self.open_taxi_after_push();
         self.spring(real_ms, reduce);
         self.draw(bg, fg, dim, line, red, apron, term);
@@ -224,6 +244,7 @@ impl App {
         let Some(m) = twr_sim::Mode::parse(mode) else { return false };
         self.rev = self.rev.wrapping_add(1);
         self.world = World::shift(u64::from(seed), m);
+        self.attn.clear();
         self.cam.fitted = false;
         self.selected = None;
         self.after_push = None;
@@ -431,6 +452,32 @@ impl App {
     /// A click that was not a drag. `button`: 0 left, 2 right.
     pub fn click(&mut self, x: f64, y: f64, button: i16) {
         self.rev = self.rev.wrapping_add(1);
+        if matches!(self.mode, Mode::HoldAt) {
+            if button == 0 {
+                let i = self.selected.expect("hold picker needs a selection");
+                let node = self.hold_points(i).into_iter().map(|n| {
+                    let p = self.node_screen(n);
+                    (n, (p[0] - x).hypot(p[1] - y))
+                }).filter(|(_, d)| *d <= HIT_PX).min_by(|a, b| a.1.total_cmp(&b.1)).map(|(n, _)| n);
+                if let Some(n) = node {
+                    let result = self.world.hold_at(i, n);
+                    self.finish_ground_pick(result);
+                } else {
+                    self.notice = "Click a marked hold point ahead on the route".into();
+                }
+            }
+            return;
+        }
+        if matches!(self.mode, Mode::GiveWay) {
+            if button == 0 {
+                if let Some(j) = self.aircraft_at(x, y) {
+                    self.select(j);
+                } else {
+                    self.notice = "Click an aircraft on the map or its strip".into();
+                }
+            }
+            return;
+        }
         let dest_set = match &self.mode {
             Mode::Idle => {
                 if button == 0 {
@@ -438,6 +485,7 @@ impl App {
                 }
                 return;
             }
+            Mode::HoldAt | Mode::GiveWay => return,
             Mode::Taxi { dest, .. } => dest.is_some(),
             Mode::Push { taxi_after, .. } => {
                 // A click on an arrow sends that push.
@@ -494,6 +542,17 @@ impl App {
     /// strip; nothing pops up.
     pub fn key(&mut self, key: &str) -> bool {
         self.rev = self.rev.wrapping_add(1);
+        if matches!(self.mode, Mode::HoldAt | Mode::GiveWay) {
+            if key == "Escape" {
+                self.mode = Mode::Idle;
+                self.notice.clear();
+                return true;
+            }
+            if !matches!(key.to_ascii_uppercase().as_str(), "H" | "ENTER") {
+                return false;
+            }
+            self.mode = Mode::Idle;
+        }
         if matches!(self.mode, Mode::Exit) {
             if key != "Escape" {
                 return false;
@@ -546,7 +605,27 @@ impl App {
             // taxi is refused while pushing, so the wait is the page's.
             "S" if self.world.verbs(i).contains(&'P') => self.start_push(i, true),
             "S" => Err("only an aircraft on stand can push back".to_string()),
+            "J" if !self.hold_points(i).is_empty() => {
+                self.mode = Mode::HoldAt;
+                Ok(())
+            }
+            "J" => Err("no hold points ahead on the route".into()),
+            "Y" if self.world.ground_verbs(i).iter().any(|(k, _)| *k == "Y") => {
+                self.mode = Mode::GiveWay;
+                Ok(())
+            }
+            "Y" => Err("only a taxiing aircraft can give way to another aircraft".into()),
+            "ENTER" => self.world.resume(i),
             "H" => self.world.hold(i),
+            "B" => self.world.backtrack(i),
+            "-" => match self.world.aircraft[i].taxi_speed.slower() {
+                Some(speed) => self.world.set_taxi_speed(i, speed),
+                None => Err("already taxiing at slow".into()),
+            },
+            "=" => match self.world.aircraft[i].taxi_speed.faster() {
+                Some(speed) => self.world.set_taxi_speed(i, speed),
+                None => Err("already taxiing at expedite".into()),
+            },
             "X" => self.world.cross(i),
             "L" => self.world.line_up(i),
             "K" => self.world.takeoff(i),
@@ -571,7 +650,7 @@ impl App {
         let (ap, g) = (&self.world.airport, &self.world.graph);
         let m = |v: f64| v.round() as i64;
         let kt = |mdm: u64| (mdm as f64 * 20.0 / 10_000.0 * 1.943_844).round() as i64;
-        match &a.phase {
+        let state = match &a.phase {
             Phase::OnStand => {
                 let stand = ap.stands.iter().find(|s| s.node == a.route.end()).map_or("", |s| s.name.as_str());
                 match a.assigned {
@@ -601,7 +680,9 @@ impl App {
             }
             Phase::GoAround(d) if a.visible() => format!("Going around {d}, {} kt", kt(a.speed_mdm)),
             Phase::GoAround(d) => format!("Going around {d} · final again in {}", mmss(a.circuit_left())),
-        }
+        };
+        let control = self.ground_status(i);
+        if control.is_empty() { state } else { format!("{state} · {control}") }
     }
 
     pub fn count(&self) -> usize {
@@ -609,17 +690,83 @@ impl App {
     }
 
     /// C1: the strip bay aircraft `i` sits in, by what it needs from you:
-    /// 0 Pushback, 1 Ground, 2 Runway, 3 Landings. An arrival parked on its
-    /// stand is Ground until its shut-down removes the strip.
+    /// 0 Pushback, 1 Ground, 2 Runway, 3 Landings, 4 Parked. An aircraft on
+    /// its stand that asks for nothing is Parked: an arrival until its
+    /// shut-down removes the strip, a departure until it is due and asks for
+    /// pushback, which moves it to Pushback. (The "needs you" box above all
+    /// of them is the page's: it reads `attention_level`.)
     pub fn bay_of(&self, i: usize) -> u8 {
         let a = &self.world.aircraft[i];
         match a.phase {
-            Phase::OnStand if a.arrival => 1,
+            Phase::OnStand if !self.world.requesting(i) => 4,
             Phase::OnStand | Phase::Pushback => 0,
             Phase::LineUp(_) | Phase::LinedUp(_) | Phase::TakeoffRoll(_) | Phase::Airborne(_) => 2,
             Phase::Final(_) | Phase::Landing(_) | Phase::GoAround(_) => 3,
             _ => 1,
         }
+    }
+
+    /// Does aircraft `i` wait on you? A request (`World::requesting`), a
+    /// hold short of a runway (it waits for X or L), or a live conflict.
+    /// The score does not count a hold short as a request; the card should
+    /// still say someone is waiting.
+    fn needs_you(&self, i: usize) -> bool {
+        let a = &self.world.aircraft[i];
+        !self.gone(i) && (self.world.requesting(i) || matches!(a.phase, Phase::HoldShort(_)) || !self.conflict_text(i).is_empty())
+    }
+
+    /// Called every frame: stamp the tick an aircraft first needs you, drop
+    /// the stamp the moment it does not.
+    fn track_attention(&mut self) {
+        let now = self.world.tick;
+        let needing: Vec<String> = (0..self.world.aircraft.len()).filter(|&i| self.needs_you(i)).map(|i| self.world.aircraft[i].callsign.clone()).collect();
+        self.attn.retain(|cs, _| needing.contains(cs));
+        for cs in needing {
+            self.attn.entry(cs).or_insert(now);
+        }
+    }
+
+    /// How loudly card `i` asks for you: 0 not at all, 1 green (new), 2
+    /// yellow (waited ATTN_YELLOW_REAL_S), 3 red and flashing (waited
+    /// ATTN_RED_REAL_S, a live conflict, or a landing clearance close to its
+    /// deadline).
+    pub fn attention_level(&self, i: usize) -> u8 {
+        let a = &self.world.aircraft[i];
+        let Some(&since) = self.attn.get(&a.callsign) else { return 0 };
+        let age_s = self.world.tick.saturating_sub(since) / TICKS_PER_REAL_S;
+        let deadline = matches!(a.phase, Phase::Final(_)) && a.final_m() <= a.decide_mdm as f64 / twr_sim::aircraft::MDM_PER_M as f64 + ATTN_FINAL_LEAD_M;
+        if !self.conflict_text(i).is_empty() || deadline || age_s >= ATTN_RED_REAL_S {
+            3
+        } else if age_s >= ATTN_YELLOW_REAL_S {
+            2
+        } else {
+            1
+        }
+    }
+
+    /// Sort key for the "needs you" box, lowest first: loudest, then longest
+    /// waiting.
+    pub fn attention_key(&self, i: usize) -> f64 {
+        let since = self.attn.get(&self.world.aircraft[i].callsign).copied().unwrap_or(self.world.tick);
+        -(f64::from(self.attention_level(i)) * 1e12) + since as f64
+    }
+
+    /// ICAO aerodrome code letter of aircraft `i`'s type ("E" for a B77W),
+    /// or "" for a type with none: the letter a stand must match or exceed.
+    pub fn code_letter(&self, i: usize) -> String {
+        twr_sim::traffic::type_letter(&self.world.aircraft[i].type_code).map(String::from).unwrap_or_default()
+    }
+
+    /// For a landed arrival that is selected: how many free stands take it,
+    /// as a sentence for the panel; "" for any other aircraft.
+    pub fn stand_note(&self, i: usize) -> String {
+        if !self.wants_stand(i) {
+            return String::new();
+        }
+        let n = self.world.airport.stands.iter().filter(|st| self.stand_free_for(i, st)).count();
+        let code = self.code_letter(i);
+        let code = if code.is_empty() { "any code".to_string() } else { format!("code {code}") };
+        format!("{n} free stands take {code}, marked on the map")
     }
 
     /// C1: sort key inside the bay, lowest first. Landings: metres to the
@@ -730,6 +877,13 @@ impl App {
     pub fn select(&mut self, i: usize) {
         self.rev = self.rev.wrapping_add(1);
         if i < self.world.aircraft.len() {
+            if matches!(self.mode, Mode::GiveWay) {
+                if let Some(from) = self.selected {
+                    let result = self.world.give_way(from, i);
+                    self.finish_ground_pick(result);
+                }
+                return;
+            }
             self.selected = Some(i);
             self.mode = Mode::Idle;
             self.notice.clear();
@@ -768,6 +922,7 @@ impl App {
         match World::scenario(self.world.seed, name) {
             Some(w) => {
                 self.world = w;
+                self.attn.clear();
                 // A new airport picture: frame it again, or the aircraft
                 // can sit off-canvas under the last scenario's zoom.
                 self.cam.fitted = false;
@@ -808,12 +963,15 @@ impl App {
                     _ => String::new(),
                 };
                 let mut parts: Vec<String> = self.page_verbs(i).into_iter().map(words).collect();
+                parts.extend(self.world.ground_verbs(i).iter().map(|(k, label)| format!("{k} {label}")));
                 parts.push("Esc deselect".into());
                 parts.join(" · ")
             }
             Mode::Taxi { dest: None, .. } => "Click a stand, holding point or runway entry · Esc cancel".into(),
             Mode::Taxi { preview: None, note, .. } => format!("{note} · click it again to undo · Esc cancel"),
             Mode::Taxi { .. } => "Enter send · click taxiway: via · right-click: avoid, again to undo · Esc cancel".into(),
+            Mode::HoldAt => "Click a marked hold point ahead on the route · Esc cancel".into(),
+            Mode::GiveWay => "Click the aircraft to give way to, on the map or its strip · Esc cancel".into(),
             Mode::Exit => "Click an exit along the runway · Esc cancel".into(),
             Mode::Push { sel, .. } => {
                 let o = self.world.tail_options(i);
@@ -850,7 +1008,7 @@ impl App {
             Mode::Taxi { via, .. } => {
                 via.iter().map(|&e| self.name_or_dash(e)).collect::<Vec<_>>().join(" ")
             }
-            Mode::Idle | Mode::Exit | Mode::Push { .. } => String::new(),
+            Mode::Idle | Mode::Exit | Mode::Push { .. } | Mode::HoldAt | Mode::GiveWay => String::new(),
         }
     }
 
@@ -890,6 +1048,13 @@ impl App {
     /// the button presses and its label. Only while no taxi or exit pick is
     /// open, when the hint line already says what the clicks mean.
     pub fn verb_buttons(&self, i: usize) -> Vec<String> {
+        if matches!(self.mode, Mode::HoldAt | Mode::GiveWay) {
+            let mut buttons = vec!["Escape\tCancel".into(), "H\tHold".into()];
+            if self.world.ground_verbs(i).iter().any(|(k, _)| *k == "Enter") {
+                buttons.push("Enter\tContinue".into());
+            }
+            return buttons;
+        }
         // C2: while choosing a tail, one button per direction, pressing its digit.
         if matches!(self.mode, Mode::Push { .. }) {
             return self
@@ -926,7 +1091,13 @@ impl App {
             'E' => "Exit",
             _ => "",
         };
-        self.page_verbs(i).into_iter().filter(|&c| !label(c).is_empty()).map(|c| format!("{c}\t{}", label(c))).collect()
+        let mut buttons: Vec<String> = self.page_verbs(i).into_iter().filter(|&c| !label(c).is_empty()).map(|c| format!("{c}\t{}", label(c))).collect();
+        for (key, label) in self.world.ground_verbs(i) {
+            if !buttons.iter().any(|b| b.split('\t').next() == Some(key)) {
+                buttons.push(format!("{key}\t{label}"));
+            }
+        }
+        buttons
     }
 
     /// What aircraft `i` is asking for, or "" if nothing; the strip flashes
@@ -961,20 +1132,71 @@ impl App {
     /// key, so a typed line and a key press can never disagree. Returns ""
     /// when the sim took it, else the reason it did not.
     pub fn send_line(&mut self, line: &str) -> String {
-        match twr_sim::radio::parse(&self.world, line) {
+        match twr_sim::radio::parse_command(&self.world, line) {
             Err(e) => {
                 self.rev = self.rev.wrapping_add(1);
+                self.notice = e.clone();
                 e
             }
-            Ok((i, k)) => {
+            Ok((i, command)) => {
+                self.mode = Mode::Idle;
                 self.select(i);
-                self.key(&k.to_string());
+                use twr_sim::radio::Command;
+                let result = match command {
+                    Command::Key(k) => {
+                        let key = if k == '\r' { "Enter".into() } else { k.to_string() };
+                        self.key(&key);
+                        return self.notice.clone();
+                    }
+                    Command::HoldAt(n) => self.world.hold_at(i, n),
+                    Command::GiveWay(j) => self.world.give_way(i, j),
+                    Command::Expedite => self.world.set_taxi_speed(i, twr_sim::TaxiSpeed::Expedite),
+                    Command::Taxi { to, via } => match self.world.plan(i, to, &via, &[]) {
+                        Some(route) => self.world.taxi(i, route),
+                        None => Err("no route from here".to_string()),
+                    },
+                };
+                self.notice = result.err().unwrap_or_default();
                 self.notice.clone()
             }
         }
     }
 
-    // ---- C3 ground control: read-only. Keys are wired by the shell slice ----
+    // ---- C3 ground control ------------------------------------------------
+
+    /// Point labels share the radio grammar's graph names and node number.
+    pub fn hold_point_name(&self, node: u32) -> String {
+        twr_sim::radio::hold_point_name(&self.world, node)
+    }
+
+    /// The picker's mode is readable without changing its state.
+    pub fn ground_pick(&self) -> String {
+        match self.mode {
+            Mode::HoldAt => "hold-at",
+            Mode::GiveWay => "give-way",
+            _ => "",
+        }.into()
+    }
+
+    /// Control text comes from the live stop, including automatic release.
+    pub fn ground_status(&self, i: usize) -> String {
+        let other = self.give_way_to(i);
+        if !other.is_empty() { return format!("giving way to {other}") }
+        let point = self.hold_point(i);
+        if point >= 0 { return format!("hold at {}", self.hold_point_name(point as u32)) }
+        let a = &self.world.aircraft[i];
+        if a.phase == Phase::HoldPosition && a.on_edge() && a.pos_mdm == a.dist_to(a.leg, &self.world.graph) {
+            return format!("at {}", self.hold_point_name(a.route.nodes[a.leg]));
+        }
+        let mut status = Vec::new();
+        if a.taxi_speed != twr_sim::TaxiSpeed::Normal && matches!(a.phase, Phase::Holding | Phase::Taxi | Phase::HoldShort(_) | Phase::LinedUp(_) | Phase::LineUp(_)) {
+            status.push(format!("taxi speed {}", a.taxi_speed.name()));
+        }
+        if let Some((_, runway)) = &a.cross_ahead { status.push(format!("cross {runway} if clear")); }
+        if let Some(end) = &a.backtrack { status.push(format!("backtracking for {end}")); }
+        status.join(" · ")
+    }
+
 
     /// C3 verbs aircraft `i` accepts now, one line each, "key<TAB>label",
     /// as `verb_buttons` words its own: "Enter\tContinue", "J\tHold at
@@ -1094,7 +1316,15 @@ impl App {
     /// waiting real time. For tests only; the page never calls it.
     pub fn fast_forward(&mut self, n: u32) {
         self.rev = self.rev.wrapping_add(1);
-        self.world.step_ticks(n);
+        // In chunks of a second, so a card's attention age builds up as it
+        // would over that many frames, not from the end of the jump.
+        let mut left = n;
+        while left > 0 {
+            let k = left.min(TICK_HZ);
+            self.world.step_ticks(k);
+            self.track_attention();
+            left -= k;
+        }
         self.open_taxi_after_push();
     }
 }
@@ -1172,6 +1402,11 @@ impl App {
             .filter(|(_, d, _)| *d <= HIT_PX)
             .min_by(|a, b| a.1.total_cmp(&b.1).then(a.2.total_cmp(&b.2)))
             .map(|(i, _, _)| i)
+    }
+
+    fn finish_ground_pick(&mut self, result: Result<(), String>) {
+        if result.is_ok() { self.mode = Mode::Idle; }
+        self.notice = result.err().unwrap_or_default();
     }
 
     /// Nearest node a taxi route can end at, within reach of the click.
@@ -1361,6 +1596,28 @@ impl App {
             let p = self.node_screen(st.node);
             ctx.fill_rect((p[0] - 2.0) * d, (p[1] - 2.0) * d, 4.0 * d, 4.0 * d);
         }
+        // A landed arrival is selected: only the free stands that take its
+        // type are marked, in ink with a ring; the rest stay small and dim.
+        if let Some(i) = self.selected.filter(|&i| self.wants_stand(i)) {
+            ctx.set_fill_style_str(fg);
+            ctx.set_stroke_style_str(fg);
+            ctx.set_line_width(1.5 * d);
+            // Few stands qualify (a code E or F aircraft): a square and a ring
+            // each. Most do (code C fits 268 of 270): a smaller square alone,
+            // or the whole apron lights up and the mark says nothing.
+            let free: Vec<_> = ap.stands.iter().filter(|st| self.stand_free_for(i, st)).collect();
+            let few = free.len() <= STAND_RING_MAX;
+            for st in free {
+                let p = self.node_screen(st.node);
+                let r = if few { 4.0 } else { 3.0 };
+                ctx.fill_rect((p[0] - r) * d, (p[1] - r) * d, 2.0 * r * d, 2.0 * r * d);
+                if few {
+                    ctx.begin_path();
+                    let _ = ctx.arc(p[0] * d, p[1] * d, 9.0 * d, 0.0, std::f64::consts::TAU);
+                    ctx.stroke();
+                }
+            }
+        }
         ctx.set_fill_style_str(fg);
         for h in &ap.holds {
             let p = self.node_screen(h.node);
@@ -1378,6 +1635,22 @@ impl App {
             if let Some((lim, _)) = &a.limit {
                 let p = twr_sim::aircraft::point_at(ap, &self.world.graph, &a.route, *lim);
                 self.hold_bar(p, &a.route, *lim, fg);
+            }
+        }
+
+        if matches!(self.mode, Mode::HoldAt) {
+            if let Some(i) = self.selected {
+                ctx.set_stroke_style_str(fg);
+                ctx.set_fill_style_str(fg);
+                ctx.set_line_width(2.0 * d);
+                ctx.set_font(&format!("{}px monospace", 12.0 * d));
+                for n in self.hold_points(i) {
+                    let p = self.node_screen(n);
+                    ctx.begin_path();
+                    let _ = ctx.arc(p[0] * d, p[1] * d, 7.0 * d, 0.0, std::f64::consts::TAU);
+                    ctx.stroke();
+                    let _ = ctx.fill_text(&self.hold_point_name(n), (p[0] + 10.0) * d, (p[1] - 10.0) * d);
+                }
             }
         }
 
@@ -1548,6 +1821,19 @@ impl App {
     }
 
     /// The verbs aircraft `i` accepts, plus S where P is accepted.
+    /// An arrival that has landed and has no stand yet: the aircraft whose
+    /// stand choice the map should help with.
+    fn wants_stand(&self, i: usize) -> bool {
+        let a = &self.world.aircraft[i];
+        a.arrival && matches!(a.phase, Phase::Landing(_) | Phase::Holding | Phase::Taxi | Phase::HoldPosition | Phase::HoldShort(_))
+    }
+
+    /// Does `st` take aircraft `i`'s type, and is nobody else headed for it?
+    fn stand_free_for(&self, i: usize, st: &twr_sim::airport::Stand) -> bool {
+        twr_sim::traffic::stand_fits(st.code, &self.world.aircraft[i].type_code)
+            && !self.world.aircraft.iter().enumerate().any(|(j, b)| j != i && !self.gone(j) && b.route.end() == st.node)
+    }
+
     fn page_verbs(&self, i: usize) -> Vec<char> {
         let mut v = self.world.verbs(i);
         if let Some(p) = v.iter().position(|&c| c == 'P') {

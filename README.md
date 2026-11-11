@@ -46,6 +46,9 @@ script.
 | `C` | clear to land |
 | `G` | go around |
 | `E`, click an exit | pick the landing aircraft's exit |
+| `J`, click a marked point | hold at a point ahead on the route; `Enter` continues |
+| `Y`, click an aircraft | give way to that aircraft at the junction; it releases itself once the other has passed |
+| `-` / `=`, `B` | taxi slower / faster; backtrack on the runway |
 | `Space` | pause |
 | `Esc` | cancel, deselect, close the result |
 
@@ -58,6 +61,19 @@ script.
 `?mode=peak&seed=7` replays a shift: same seed, same wind, same traffic.
 **Practice lets you choose fog.** Use the Fog control in the wind box to turn
 LVP on or off.
+
+**Cards that wait on you move to the top.** A card that asks for something
+sits in **Needs you**, green when new, yellow after 15 real seconds, red and
+flashing after 40, or at once for a conflict or a landing clearance 1,500 m
+from its deadline. The words "Waiting" and "Act now" say it as well, and under
+reduced motion the red stays steady. The 15 s and 40 s are authored, not
+measured: they are two constants at the top of `crates/web/src/lib.rs`. An
+aircraft on its stand that asks for nothing sits in **Parked**.
+
+**A landed aircraft stops clear of the runway.** Its exit ends at least 90 m
+in a straight line from the centreline, not after 90 m of taxiway. Before this,
+all 8 default exits stopped it 9 to 51 m from the centreline. The price is
+time on the runway: 29L to Z2 now takes 98 s, up from 75 s.
 
 ## The things most tower games get wrong
 

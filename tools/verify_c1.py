@@ -19,7 +19,12 @@ PAGE = (pathlib.Path(__file__).resolve().parents[1] / "dist" / "index.html").as_
 OUT = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else ".")
 OUT.mkdir(parents=True, exist_ok=True)
 results: list[tuple[bool, str]] = []
-NAMES = ["Pushback", "Ground", "Runway", "Landings"]
+NAMES = ["Pushback", "Ground", "Runway", "Landings", "Parked"]
+# 2026-11-11: a card that waits on you leaves its bay for the "Needs you" box
+# above them all (bay 5, verify_ui5.py). This script is about the bays, so it
+# turns that box off with body[data-noattn] after every load. An aircraft on
+# its stand that asks for nothing is Parked (bay 4), not Pushback.
+NOATTN = "document.body.dataset.noattn = '1'"
 
 def check(ok, what):
     results.append((bool(ok), what))
@@ -69,18 +74,18 @@ def open_page(pw, theme="dark"):
     pg.on("pageerror", lambda e: errs.append("PAGEERROR " + str(e)))
     pg.on("console", lambda m: m.type == "error" and errs.append(m.text))
     pg.on("dialog", lambda d: (errs.append("DIALOG " + d.message), d.dismiss()))
-    pg.goto(PAGE); pg.wait_for_timeout(600); frame(pg)
+    pg.goto(PAGE); pg.wait_for_timeout(600); pg.evaluate(NOATTN); frame(pg)
     return b, pg, errs
 
 with sync_playwright() as pw:
     b, pg, errs = open_page(pw)
 
     # ---- 1: Practice. IGO512 on stand, IGO713 on final ----------------------
-    check(under(pg, 0) == 0 and under(pg, 1) == 3, f"IGO512 under Pushback, IGO713 under Landings: {under(pg, 0)}, {under(pg, 1)}")
+    check(under(pg, 0) == 4 and under(pg, 1) == 3, f"IGO512 under Parked (on stand, asks for nothing), IGO713 under Landings: {under(pg, 0)}, {under(pg, 1)}")
     h = heads(pg)
-    check(h == [[0, 1, "true"], [3, 1, "true"]], f"bays with strips: Pushback and Landings, counts 1 and 1: {h}")
+    check(h == [[3, 1, "true"], [4, 1, "true"]], f"bays with strips: Landings and Parked, counts 1 and 1: {h}")
     shown = pg.evaluate("[...document.querySelectorAll('.bayhead')].filter(h => getComputedStyle(h).display !== 'none').map(h => h.lastElementChild.textContent)")
-    check(shown == ["1", "0", "0", "1"], f"step 2: all four headers show, empty ones read 0: {shown}")
+    check(shown == ["0", "0", "0", "1", "1", "0"], f"step 2: all six headers show, empty ones read 0: {shown}")
     pg.screenshot(path=str(OUT / "c1_practice_dark.png"))
 
     # ---- 2: a departure walks Pushback -> Ground -> Runway -------------------
@@ -97,7 +102,7 @@ with sync_playwright() as pw:
     check(app(pg, f"a.phase({i})").startswith("TakeoffRoll") and under(pg, i) == 2, "takeoff roll: Runway")
 
     # ---- 3 and 4: an arrival, Landings -> Ground ----------------------------
-    pg.goto(PAGE); pg.wait_for_timeout(600); frame(pg)
+    pg.goto(PAGE); pg.wait_for_timeout(600); pg.evaluate(NOATTN); frame(pg)
     k = 1
     check(app(pg, f"a.bay_of({k})") == 3, "IGO713 on final: Landings")
     pg.click(f"#strip{k}"); frame(pg)
@@ -120,20 +125,20 @@ with sync_playwright() as pw:
     check(by_dist == by_y, f"Landings sorted nearest threshold first: by distance {by_dist}, on screen {by_y}")
 
     # ---- 5: fold ---------------------------------------------------------------
-    pg.goto(PAGE); pg.wait_for_timeout(600); frame(pg)
+    pg.goto(PAGE); pg.wait_for_timeout(600); pg.evaluate(NOATTN); frame(pg)
     pg.click('.bayhead[data-bay="3"]'); frame(pg)
     check(not pg.is_visible("#strip1"), "folding Landings hides IGO713's strip")
     h = heads(pg)
-    check(h == [[0, 1, "true"], [3, 1, "false"]], f"folded header keeps its count and says collapsed: {h}")
-    check(pg.is_visible("#strip0"), "Pushback strip unaffected")
+    check(h == [[3, 1, "false"], [4, 1, "true"]], f"folded header keeps its count and says collapsed: {h}")
+    check(pg.is_visible("#strip0"), "Parked strip unaffected")
     pg.screenshot(path=str(OUT / "c1_folded_dark.png"))
     pg.click('.bayhead[data-bay="3"]'); frame(pg)
-    check(pg.is_visible("#strip1") and heads(pg)[1][2] == "true", "unfolding shows it again")
+    check(pg.is_visible("#strip1") and heads(pg)[0][2] == "true", "unfolding shows it again")
 
     # ---- 6: fold holds across a phase change; light theme -----------------------
     pg.click("#strip0"); frame(pg)
-    pg.click('.bayhead[data-bay="0"]'); frame(pg)
-    check(not pg.is_visible("#strip0"), "Pushback folded: IGO512's strip is hidden but still selected")
+    pg.click('.bayhead[data-bay="4"]'); frame(pg)
+    check(not pg.is_visible("#strip0"), "Parked folded: IGO512's strip is hidden but still selected")
     pg.keyboard.press("p"); pg.keyboard.press("Enter"); frame(pg)
     check(app(pg, "a.phase(0)") == "Pushback", "P pushes the selected IGO512 while its bay is folded")
     check(ff_until(pg, "a.phase(0) === 'Holding'") and pg.is_visible("#strip0") and under(pg, 0) == 1,

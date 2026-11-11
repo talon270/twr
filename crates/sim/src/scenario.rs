@@ -142,6 +142,9 @@ impl World {
     ///     localizer sensitive area; IGO714 on final for 29L, not cleared
     ///     (PLAN-lvp.md step 8)
     pub fn scenario(seed: u64, name: &str) -> Option<World> {
+        if name == "c3-give-way" { return c3_give_way(); }
+        if name == "c3-cross" { return c3_cross(); }
+        if name == "c3-backtrack" { return c3_backtrack(); }
         let mut w = World::new(seed);
         if name == "arrival" || name == "pilot" {
             let i = w.aircraft.iter().position(|a| a.callsign == "IGO713")?;
@@ -199,4 +202,113 @@ impl World {
         }
         Some(w)
     }
+}
+
+
+/// C3 browser fixture uses the same graph search as the junction regression.
+fn c3_give_way() -> Option<World> {
+    use crate::aircraft::TAXI_MDM_PER_TICK;
+    let base = World::empty(1);
+    let (ap, g) = (&base.airport, &base.graph);
+    let taxi_edges = |n: u32| -> Vec<(u32, u32)> {
+        if g.runway_at[n as usize].is_some() {
+            return Vec::new();
+        }
+        let mut v: Vec<(u32, u32)> = ap
+            .edges
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.kind == EdgeKind::Taxiway && (e.a == n || e.b == n))
+            .map(|(k, e)| (k as u32, if e.a == n { e.b } else { e.a }))
+            .filter(|&(_, v)| g.runway_at[v as usize].is_none())
+            .collect();
+        v.sort();
+        v
+    };
+    // Out from `n` along edge `e`, then on along the lowest-numbered taxiway
+    // edge each time, never revisiting a node, until `min_m` is covered.
+    let walk = |n: u32, e: u32, min_m: u64| -> Option<Route> {
+        let first = taxi_edges(n).into_iter().find(|x| x.0 == e)?;
+        let mut r = Route { nodes: vec![n, first.1], edges: vec![e] };
+        while g.run_len_dm(&r) < min_m * 10 {
+            let next = taxi_edges(r.end()).into_iter().find(|(_, v)| !r.nodes.contains(v))?;
+            r.edges.push(next.0);
+            r.nodes.push(next.1);
+        }
+        Some(r)
+    };
+    let join = |into: &Route, out: &Route| {
+        let mut nodes: Vec<u32> = into.nodes.iter().rev().copied().collect();
+        nodes.extend_from_slice(&out.nodes[1..]);
+        let mut edges: Vec<u32> = into.edges.iter().rev().copied().collect();
+        edges.extend_from_slice(&out.edges);
+        Route { nodes, edges }
+    };
+    // A three-way junction: IGO601 in by e1, IGO602 in by e2, both out by e3.
+    // IGO601 stops at least 150 m on; IGO602 goes 150 m further, so it is
+    // never parked in front of IGO601.
+    let (ra, rb) = (0..ap.nodes.len() as u32)
+        .find_map(|n| {
+            let out = taxi_edges(n);
+            if out.len() < 3 {
+                return None;
+            }
+            let (e1, e2, e3) = (out[0].0, out[1].0, out[2].0);
+            let (a_in, b_in) = (walk(n, e1, 120)?, walk(n, e2, 120)?);
+            let a_out = walk(n, e3, 150)?;
+            let b_out = walk(n, e3, g.run_len_dm(&a_out) / 10 + 150)?;
+            let (ra, rb) = (join(&a_in, &a_out), join(&b_in, &b_out));
+            let mut all: Vec<u32> = ra.nodes.iter().chain(&b_in.nodes[1..]).copied().collect();
+            all.sort();
+            let unique = all.windows(2).all(|w| w[0] != w[1]) && rb.check(ap).is_ok() && ra.check(ap).is_ok();
+            unique.then_some((ra, rb))
+        })
+        .expect("IGI has a three-way taxiway junction with 120 m of taxiway on each side");
+    // The in-walks share no node, so the first node the routes share is it.
+    let junction = *ra.nodes.iter().find(|n| rb.nodes.contains(n)).unwrap();
+    let ka = ra.nodes.iter().position(|&n| n == junction).unwrap();
+    let kb = rb.nodes.iter().position(|&n| n == junction).unwrap();
+    // The farther one starts first, so both reach the junction on one tick.
+    let ticks = |r: &Route, k: usize| (g.run_len_dm(&Route { nodes: r.nodes[..=k].to_vec(), edges: r.edges[..k].to_vec() }) * 1000).div_ceil(TAXI_MDM_PER_TICK) as u32;
+    let (ta, tb) = (ticks(&ra, ka), ticks(&rb, kb));
+    let set_up = || {
+        let mut w = World::empty(1);
+        let a = w.add(Aircraft { phase: Phase::Holding, ..Aircraft::parked("IGO601", ra.nodes[0]) });
+        let b = w.add(Aircraft { phase: Phase::Holding, ..Aircraft::parked("IGO602", rb.nodes[0]) });
+        let ((f, rf), (sc, rs)) = if ta >= tb { ((a, &ra), (b, &rb)) } else { ((b, &rb), (a, &ra)) };
+        w.taxi(f, rf.clone()).unwrap();
+        w.step_ticks(ta.abs_diff(tb));
+        w.taxi(sc, rs.clone()).unwrap();
+        (w, a, b)
+    };
+
+    Some(set_up().0)
+}
+
+/// The first runway is crossed; the route ends on a different runway.
+fn c3_cross() -> Option<World> {
+    let mut w = World::empty(1);
+    let (ap, g) = (&w.airport, &w.graph);
+    let (from, r) = ap.stands.iter().flat_map(|s| ap.runway_exits().into_iter().map(move |to| (s.node, to))).find_map(|(from, to)| {
+        let r = g.plan(ap, &Request { from, to, ..Default::default() })?;
+        let l = hold_limits(ap, g, &r, 0, 0);
+        (l.len() == 2 && l[0].1 != l[1].1).then_some((from, r))
+    })?;
+    let i = w.add(Aircraft { phase: Phase::Holding, ..Aircraft::parked("IGO520", from) });
+    w.taxi(i, r).ok()?;
+    Some(w)
+}
+
+/// Entry 5 leaves too little of 27 ahead; backtrack reaches its full length.
+fn c3_backtrack() -> Option<World> {
+    let mut w = World::empty(1);
+    let (ap, g) = (&w.airport, &w.graph);
+    let r = ap.stands.iter().find_map(|s| {
+        let r = g.plan(ap, &Request { from: s.node, to: 5, ..Default::default() })?;
+        (hold_limits(ap, g, &r, 0, 0).len() == 1).then_some(r)
+    })?;
+    let i = w.add(Aircraft { phase: Phase::Holding, assigned: Some("27"), ..Aircraft::parked("IGO530", r.nodes[0]) });
+    w.taxi(i, r).ok()?;
+    while w.aircraft[i].phase == Phase::Taxi { w.step_ticks(1); }
+    Some(w)
 }

@@ -484,6 +484,16 @@ impl World {
     /// there (giving way to a follower stops in its path), and when `i` is
     /// already inside the gap: there, H is the instruction.
     pub fn give_way(&mut self, i: usize, j: usize) -> Result<(), String> {
+        self.aircraft[i].stop = Some(self.give_way_stop(i, j)?);
+        Ok(())
+    }
+
+    /// Legal give-way targets, checked by the same rule as the instruction.
+    pub fn give_way_targets(&self, i: usize) -> Vec<usize> {
+        (0..self.aircraft.len()).filter(|&j| self.give_way_stop(i, j).is_ok()).collect()
+    }
+
+    fn give_way_stop(&self, i: usize, j: usize) -> Result<aircraft::Stop, String> {
         let (a, o) = (&self.aircraft[i], &self.aircraft[j]);
         if i == j {
             return Err("an aircraft can't give way to itself".into());
@@ -509,8 +519,7 @@ impl World {
             return Err(format!("{} m from the junction; giving way needs {}: hold (H) instead", to_node / aircraft::MDM_PER_M, aircraft::GIVE_WAY_GAP_M));
         }
         let stop = aircraft::Stop { node, at_mdm: a.pos_mdm + to_node - gap, give_way: Some(o.callsign.clone()) };
-        self.aircraft[i].stop = Some(stop);
-        Ok(())
+        Ok(stop)
     }
 
     /// C3, after movement and before the monitor: settle the two verbs that
