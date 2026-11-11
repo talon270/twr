@@ -165,11 +165,25 @@ pub fn candidates(ap: &Airport, g: &Graph, desig: &str) -> Vec<Candidate> {
 /// first node more than HOLD_SHORT_M away, meeting no runway on the way.
 /// More than, not equal: at exactly the hold distance the aircraft would
 /// still count as on the runway (`Crossing::exit`).
-fn vacate(ap: &Airport, g: &Graph, from: u32, e0: u32, n1: u32) -> Option<Route> {
+///
+/// "Away" is two tests, both of them: HOLD_SHORT_M of taxiway, and a stop
+/// that many metres in a straight line from the runway's centreline
+/// (`rwy`, its two ends in decimetres). Path length alone is not enough: a
+/// taxiway that curves back along the runway is long enough and still ends
+/// beside it. 8 of 8 default exits did, 9 to 51 m from the centreline, and
+/// the aircraft then sat there, counted as vacated, until taxi was cleared.
+fn vacate(ap: &Airport, g: &Graph, from: u32, e0: u32, n1: u32, rwy: ((f64, f64), (f64, f64))) -> Option<Route> {
     if g.runway_at[n1 as usize].is_some() {
         return None;
     }
     let need = HOLD_SHORT_M * 10;
+    let clear = |n: u32| {
+        let p = (f64::from(ap.nodes[n as usize].x), f64::from(ap.nodes[n as usize].y));
+        let (a, b) = rwy;
+        let (vx, vy) = (b.0 - a.0, b.1 - a.1);
+        let t = (((p.0 - a.0) * vx + (p.1 - a.1) * vy) / (vx * vx + vy * vy)).clamp(0.0, 1.0);
+        (p.0 - (a.0 + vx * t)).hypot(p.1 - (a.1 + vy * t)) > need as f64
+    };
     let mut dist = vec![u64::MAX; ap.nodes.len()];
     let mut prev: Vec<Option<(u32, u32)>> = vec![None; ap.nodes.len()];
     let mut heap = BinaryHeap::new();
@@ -179,7 +193,7 @@ fn vacate(ap: &Airport, g: &Graph, from: u32, e0: u32, n1: u32) -> Option<Route>
         if d > dist[n as usize] {
             continue;
         }
-        if d > need {
+        if d > need && clear(n) {
             let mut nodes = vec![n];
             let mut edges = Vec::new();
             let mut at = n;
@@ -216,12 +230,14 @@ fn vacate(ap: &Airport, g: &Graph, from: u32, e0: u32, n1: u32) -> Option<Route>
 pub fn exits(ap: &Airport, g: &Graph, desig: &str) -> Vec<(Exit, Route)> {
     let Some((_, run)) = threshold(ap, g, desig) else { return Vec::new() };
     let run_mdm = g.run_len_dm(&run) * 1000;
+    let at = |n: u32| (f64::from(ap.nodes[n as usize].x), f64::from(ap.nodes[n as usize].y));
+    let rwy = (at(run.nodes[0]), at(run.end()));
     let mut out = Vec::new();
     for c in candidates(ap, g, desig) {
         if c.turn_deg > EXIT_MAX_TURN_DEG {
             continue;
         }
-        let Some(v) = vacate(ap, g, c.node, c.edge, c.next) else { continue };
+        let Some(v) = vacate(ap, g, c.node, c.edge, c.next, rwy) else { continue };
         let mut route = Route { nodes: run.nodes[..=c.k].to_vec(), edges: run.edges[..c.k].to_vec() };
         route.nodes.extend_from_slice(&v.nodes[1..]);
         route.edges.extend_from_slice(&v.edges);

@@ -94,8 +94,15 @@ with sync_playwright() as pw:
     check(len(prev) > 0, f"preview drawn: {len(prev)} edges")
     zoom_at(ex, ey, -8)
     pg.screenshot(path=str(OUT / "b3_preview.png"))
-    pg.keyboard.press("Enter"); frame(pg)
-    check(phase(pg) == "Taxi", "Enter sends the taxi clearance: " + strip(pg)["state"])
+    # A mouse-only player sends the previewed route with the panel's button;
+    # verify_b2 still covers the Enter key. Playwright's click is a real
+    # pointer press, so a button that cannot be clicked fails here.
+    btn = pg.locator('#sel-verbs button[data-key="Enter"]')
+    check(btn.count() == 1 and "send taxi clearance" in btn.inner_text().lower(), f"preview offers one Send button: {btn.count()} / {btn.all_inner_texts()}")
+    check(btn.bounding_box()["height"] >= 44, f"Send button is 44 px or taller: {btn.bounding_box()['height']:.0f}")
+    btn.click(); frame(pg)
+    check(phase(pg) == "Taxi", "the Send button sends the taxi clearance: " + strip(pg)["state"])
+    check(pg.locator('#sel-verbs button[data-key="Enter"]').count() == 0, "the Send button is gone once sent")
 
     crossed = 0
     while True:

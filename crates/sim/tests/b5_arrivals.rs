@@ -187,7 +187,12 @@ fn a9_runway_occupancy_29l() {
     );
     assert_eq!(x.label(), "Z2");
     assert!((f64::from(to_exit) - expect).abs() <= 2.0, "{to_exit} ticks vs {expect:.1}");
-    assert!(f64::from(to_vacate) / hz < 80.0);
+    // 98.0 s since 2026-11-11: an exit now ends 90 m in a straight line from
+    // the centreline (`arrival::vacate`), not after 90 m of taxiway. Z2 runs
+    // nearly parallel to 29L, so that is 350 m of taxiway, not 90 m. The old
+    // 75.45 s ended with the aircraft 14 m from the centreline, still beside
+    // the runway. The bar is 100 s, not 80 s.
+    assert!(f64::from(to_vacate) / hz < 100.0);
 }
 
 // ---- Verbs -------------------------------------------------------------------

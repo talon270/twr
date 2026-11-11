@@ -904,6 +904,12 @@ impl App {
                 })
                 .collect();
         }
+        // A previewed taxi route is sent by Enter; the button presses it, so
+        // a mouse-only player is never stuck at the last step. Without a
+        // preview there is nothing to send, so no button.
+        if let Mode::Taxi { preview: Some(_), .. } = self.mode {
+            return vec!["Enter\tSend taxi clearance".into()];
+        }
         if !matches!(self.mode, Mode::Idle) {
             return Vec::new();
         }

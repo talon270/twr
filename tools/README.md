@@ -12,7 +12,7 @@ python3 tools/verify_b6.py /tmp/twr-shots
 | Script | Checks | Last run |
 |---|---|---|
 | `verify_b2.py` | map, pan and zoom, click-to-taxi; the preview equals the route | 29/29, 2026-11-10 |
-| `verify_b3.py` | push, hold short, crossings, line-up, takeoff (Line up and Takeoff by button); seed 7, pinned | 21/21, 2026-11-10 |
+| `verify_b3.py` | push, hold short, crossings, line-up, takeoff (Line up, Takeoff and Send taxi clearance by button); seed 7, pinned | 24/24 on 3 runs, 2026-11-11 |
 | `verify_b4.py` | each conflict type in both themes; the conflict panel under the map lists the pair once, selects it, and clears on H | 38/38, 2026-11-10 |
 | `verify_b5.py` | arrival from final to stand, go-arounds, R5 | 40/40, 2026-11-10 |
 | `verify_b6.py` | modes, seed replay, traffic, shut-down, bar layout | 34/34, 2026-11-10 |
