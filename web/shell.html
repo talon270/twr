@@ -109,13 +109,27 @@
      numbers still change at once (DESIGN.md motion contract). */
   :root { --spring-state: linear(0, .011, .039, .08, .129, .183, .239, .296, .352, .407, .459, .509, .555, .599, .639, .675, .709, .74, .768, .793, .816, .836, .855, .871, .886, .899, .911, .921, .931, .939, .946, .953, .958, .963, .968, .972, .975, .978, .981, .983, .985, .987, .989, .99, .992, .993, .994, .994, 1);
           --spring-state-ms: 215ms; }
+  /* PLAN-ui-depth (2026-11-15): controls have depth, from your UI probe
+     (p05, p06: a 5 px hard shadow; p10: a 3 px boundary; p13: 5 px press
+     travel). The cream neobrutalist control (md/designs.md) has no dark
+     variant, so the shadow is ink: white on dark, black on light. Controls
+     and dialogs only; strips stay flat so the red conflict bar stays the
+     loudest thing on screen. */
+  :root { --bw: 3px; --sh: 5px 5px 0 var(--fg); --sh-0: 0 0 0 var(--fg); }
   button { font: inherit; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
-           height: 44px; padding: 0 12px; border: 1px solid var(--fg); border-radius: 6px;
-           background: var(--bg); color: var(--fg); cursor: pointer; }
-  /* Look rule: press inverts fill and text. */
-  button:active { background: var(--fg); color: var(--bg); }
-  button { transition: background-color var(--spring-press-ms) var(--spring-press), color var(--spring-press-ms) var(--spring-press); }
-  @media (prefers-reduced-motion: reduce) { button { transition: none; } }
+           height: 44px; padding: 0 12px; border: var(--bw) solid var(--fg); border-radius: 6px;
+           background: var(--bg); color: var(--fg); cursor: pointer; box-shadow: var(--sh); }
+  /* Look rule: press inverts fill and text, and the control travels 5 px
+     into its shadow. */
+  button:active { background: var(--fg); color: var(--bg); transform: translate(5px, 5px); box-shadow: var(--sh-0); }
+  button { transition: background-color var(--spring-press-ms) var(--spring-press), color var(--spring-press-ms) var(--spring-press),
+                       transform var(--spring-press-ms) var(--spring-press), box-shadow var(--spring-press-ms) var(--spring-press); }
+  /* Disabled (End shift in Practice): flat and dim, so it reads as "not
+     pressable". */
+  button:disabled { box-shadow: none; border-color: var(--hair); color: var(--dim); cursor: default; }
+  button:disabled:active { background: var(--bg); color: var(--dim); transform: none; }
+  /* Reduced motion: no travel; the shadow and fill change at once. */
+  @media (prefers-reduced-motion: reduce) { button { transition: none; } button:active { transform: none; } }
   /* PLAN-ui-console A3: every control is drawn 44 px tall, so the 28 px
      drawing with a 44 px ::after hit area that Start and theme had is gone. */
   /* Continuous corners (ui-tips § Continuous corners): a squircle reads
@@ -165,7 +179,9 @@
   #conflicts.on { box-shadow: inset 3px 0 var(--red); }
   #conflict-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
   #conflict-list button { width: 100%; text-align: left; text-transform: none; letter-spacing: 0; font-size: 13px;
-                          color: var(--red-text); border-color: var(--red); font-variant-numeric: tabular-nums; }
+                          color: var(--red-text); border-color: var(--red); font-variant-numeric: tabular-nums;
+                          box-shadow: 5px 5px 0 var(--red); }
+  #conflict-list button:active { box-shadow: 0 0 0 var(--red); }
   #conflict-none { color: var(--dim); font-size: 12px; }
   /* touch-action none: the canvas owns drag and wheel, the page never scrolls. */
   #map { width: 100%; height: 100%; display: block; min-width: 0; touch-action: none; cursor: crosshair; }
@@ -206,7 +222,7 @@
      Pushback cannot push Landings off the screen at Peak. */
   #bay { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-items: start; }
   .baybox { display: flex; flex-direction: column; min-width: 0; max-height: 40vh; overflow-y: auto;
-            border: 1px solid var(--hair); border-radius: 8px; background: var(--bg); }
+            border: var(--bw) solid var(--hair); border-radius: 8px; background: var(--bg); }
   .strip { cursor: pointer; }
   /* Parked, and the "needs you" box above all the others, each full width.
      DOM order is bay index; the grid puts Needs you first. */
@@ -234,9 +250,9 @@
   .attr { position: absolute; left: 12px; bottom: calc(var(--ctx-h) + 8px); font-size: 12px; color: var(--dim); pointer-events: none; }
   .saved { color: var(--dim); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; visibility: hidden; }
   .saved.on { visibility: visible; }
-  /* Shift picker: same 44 px, 1 px ink, 6 px corner as the buttons. */
-  select, input.seed { font: inherit; font-size: 11px; height: 44px; padding: 0 8px; border: 1px solid var(--fg);
-                       border-radius: 6px; background: var(--bg); color: var(--fg); }
+  /* Shift picker: same 44 px, 3 px ink, hard shadow and 6 px corner as the buttons. */
+  select, input.seed { font: inherit; font-size: 11px; height: 44px; padding: 0 8px; border: var(--bw) solid var(--fg);
+                       border-radius: 6px; background: var(--bg); color: var(--fg); box-shadow: var(--sh); }
   input.seed { width: 11ch; font-variant-numeric: tabular-nums; }
   .shift { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   /* Step 2: an empty bay keeps its header and its 0, so the 2×2 never
@@ -246,9 +262,11 @@
      `order` places them, so a strip changing bay moves no DOM node (a node
      moved between pointerdown and click would swallow the click). */
   .bayhead { display: flex; justify-content: space-between; align-items: center; width: 100%; min-height: 44px;
-             padding: 0 4px; margin: 0; border: 0; background: none; color: var(--dim); font: inherit; font-size: 11px;
+             padding: 0 4px; margin: 0; border: 0; box-shadow: none; transform: none; background: none; color: var(--dim); font: inherit; font-size: 11px;
              letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
   .bayhead:hover, .bayhead:focus-visible { color: var(--fg); }
+  /* A header, not a control: no press travel (button:active would add it). */
+  .bayhead:active { transform: none; box-shadow: none; }
   .bayhead .n { font-variant-numeric: tabular-nums; }
   .bayhead[aria-expanded="false"] .chev { transform: rotate(-90deg); }
   .bayhead .chev { display: inline-block; margin-right: 6px; transition: transform var(--spring-state-ms) var(--spring-state); }
@@ -281,16 +299,21 @@
   #score[hidden] { display: none; }
   #score > span { white-space: nowrap; }
   /* C4: runway toggles. Pressed is solid ink, so state never rests on colour. */
-  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  /* 10 px gap: a 5 px shadow in a 6 px gap ran into the next toggle. */
+  .seg { display: flex; flex-wrap: wrap; gap: 10px; }
   .seg button { min-width: 44px; min-height: 44px; padding: 0 8px; font: inherit; font-size: 11px; cursor: pointer;
-                border: 1px solid var(--fg); border-radius: 6px; background: var(--bg); color: var(--fg); }
-  .seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+                border: var(--bw) solid var(--fg); border-radius: 6px; background: var(--bg); color: var(--fg); }
+  /* Pressed sits flat, pushed in: its ink shadow merged with a filled
+     neighbour into one block. Released toggles stand up with the shadow. */
+  .seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); box-shadow: var(--sh-0); }
   /* A runway toggle is reversible state: the state spring, not the press. */
-  .seg button { transition: background-color var(--spring-state-ms) var(--spring-state), color var(--spring-state-ms) var(--spring-state); }
+  .seg button { transition: background-color var(--spring-state-ms) var(--spring-state), color var(--spring-state-ms) var(--spring-state),
+                            transform var(--spring-press-ms) var(--spring-press), box-shadow var(--spring-press-ms) var(--spring-press); }
+  @media (prefers-reduced-motion: reduce) { .seg button { transition: none; } }
   .rwnote { grid-column: 1 / -1; font-size: 12px; color: var(--dim); }
   .rwnote:empty { display: none; }
   .score .bad { color: var(--red-text); }
-  dialog.result { border: 1px solid var(--fg); border-radius: 8px; background: var(--elev); color: var(--fg);
+  dialog.result { border: var(--bw) solid var(--fg); box-shadow: var(--sh); border-radius: 8px; background: var(--elev); color: var(--fg);
                   padding: 20px 24px; width: min(460px, 100vw - 32px); font: inherit; }
   dialog.result::backdrop { background: var(--scrim); }
   /* The title takes first focus only to keep it off the buttons; it is not
@@ -308,7 +331,8 @@
                             overlay var(--spring-state-ms) allow-discrete, display var(--spring-state-ms) allow-discrete; }
   dialog.result[open]::backdrop { opacity: 1; }
   @starting-style { dialog.result[open]::backdrop { opacity: 0; } }
-  dialog.result h2 { margin: 0 0 4px; font-size: 16px; letter-spacing: .08em; text-transform: uppercase; text-wrap: balance; }
+  /* Mixed case (UI probe p09). Balanced wrapping stays: ui.md's rule wins over p16. */
+  dialog.result h2 { margin: 0 0 4px; font-size: 16px; text-wrap: balance; }
   dialog.result .sub { margin: 0 0 16px; color: var(--elev-dim); font-size: 12px; }
   dialog.result table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
   dialog.result th { text-align: left; font-weight: 400; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--elev-dim); padding: 0 12px 6px 0; }
@@ -320,7 +344,7 @@
      the result dialog. Enter and exit are one transition on opacity and a
      small rise, driven by the press spring: a close mid-open turns back from
      where it is. Reduced motion: opacity only, no rise. */
-  dialog.title { border: 1px solid var(--fg); border-radius: 8px; background: var(--elev); color: var(--fg);
+  dialog.title { border: var(--bw) solid var(--fg); box-shadow: var(--sh); border-radius: 8px; background: var(--elev); color: var(--fg);
                  padding: 24px 28px; width: min(480px, 100vw - 32px); font: inherit;
                  opacity: 0; transform: translateY(12px);
                  transition: opacity 200ms var(--spring-press), transform 200ms var(--spring-press),
@@ -351,8 +375,8 @@
   .radio { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--hair);
            background: var(--panel); flex-wrap: wrap; }
   .radio input { flex: 1 1 320px; min-width: 0; height: 44px; padding: 0 10px; font: inherit; font-size: 14px;
-                 border: 1px solid var(--fg); border-radius: 6px; background: var(--bg); color: var(--fg);
-                 text-transform: uppercase; }
+                 border: var(--bw) solid var(--fg); border-radius: 6px; background: var(--bg); color: var(--fg);
+                 box-shadow: var(--sh); text-transform: uppercase; }
   .radio .next { display: flex; flex-wrap: wrap; gap: 6px; flex: 2 1 320px; min-height: 44px; align-items: center; }
   .radio .next button { min-width: 44px; }
   /* C3 verbs use the panel's existing data-key and pointerdown handlers. */
