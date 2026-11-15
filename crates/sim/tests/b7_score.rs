@@ -164,21 +164,58 @@ fn surge_ends_on_the_third_incident() {
 }
 
 #[test]
-fn shift_ends_at_thirty_real_minutes() {
+fn an_idle_surge_ends_on_its_third_strike() {
+    // Audit 2026-11-13, A4: before strikes, seed 7 ran 400,000 ticks (111
+    // real minutes) with nobody at the controls and never ended.
+    let mut w = World::shift(7, Mode::Surge);
+    while w.score.over.is_none() {
+        w.step_ticks(1);
+        assert!(w.tick < 400_000, "an idle Surge must end");
+    }
+    let no_clearance = w.go_arounds.iter().filter(|g| g.why == twr_sim::arrival::GoAround::NoClearance).count();
+    assert_eq!(w.strikes(), SURGE_INCIDENTS, "over on the third strike");
+    assert_eq!(w.strikes(), w.monitor.incidents.len() + no_clearance);
+    assert!(no_clearance > 0, "the idle strikes are go-arounds for no landing clearance");
+    let last = w.go_arounds.iter().filter(|g| g.why == twr_sim::arrival::GoAround::NoClearance).map(|g| g.tick).max();
+    assert_eq!(w.score.over, last.max(w.monitor.incidents.last().map(|i| i.tick)), "over on the third strike's tick");
+    println!("idle Surge seed 7: over at {} real s, {} incidents, {no_clearance} no-clearance go-arounds", w.tick / TICKS_PER_REAL_S, w.monitor.incidents.len());
+}
+
+#[test]
+fn end_shift_ends_a_scored_shift_and_not_practice() {
+    let mut w = World::shift(3, Mode::Peak);
+    w.step_ticks(5_000);
+    assert!(w.end_shift(), "Peak ends when you end it");
+    assert_eq!(w.score.over, Some(5_000));
+    let before = (w.tick, w.score.clone());
+    w.step_ticks(1_000);
+    assert_eq!(before, (w.tick, w.score.clone()), "nothing moves after End shift");
+    assert!(w.end_shift(), "a second End shift keeps the first tick");
+    assert_eq!(w.score.over, Some(5_000));
+
+    let mut w = World::shift(3, Mode::Practice);
+    w.step_ticks(100);
+    assert!(!w.end_shift(), "Practice has no end");
+    assert_eq!(w.score.over, None);
+}
+
+#[test]
+fn a_shift_has_no_time_limit() {
     let mut w = World::shift(3, Mode::Normal);
     let mut c = common::Ctl::new(&w, 3);
     c.spawn = false;
-    while w.score.over.is_none() {
+    let thirty = SHIFT_REAL_S * TICKS_PER_REAL_S;
+    while w.tick < thirty {
         w.step_ticks(1);
         c.act(&mut w);
     }
-    assert_eq!(w.score.over, Some(SHIFT_REAL_S * TICKS_PER_REAL_S));
-    let (t, m) = (w.tick, w.score.movements);
-    for _ in 0..1000 {
+    let (offered, m) = (w.offered(), w.score.movements);
+    while w.tick < 2 * thirty {
         w.step_ticks(1);
         c.act(&mut w);
     }
-    assert_eq!((w.tick, w.score.movements), (t, m), "no movement after 30:00 counts");
+    assert_eq!(w.score.over, None, "no end at 30:00 or after");
+    assert!(w.offered() > offered, "traffic still spawns after 30:00: {offered} offered at 30:00, {} at 60:00", w.offered());
     println!("Normal seed 3 under the controller: {m} movements of {} offered, delay {:.1} game min over {} aircraft", w.offered(), w.score.delay_min(), w.score.delayed());
 }
 
@@ -188,7 +225,7 @@ fn same_seed_same_commands_same_score() {
         let mut w = World::shift(5, Mode::Peak);
         let mut c = common::Ctl::new(&w, 5);
         c.spawn = false;
-        while w.score.over.is_none() {
+        while w.tick < SHIFT_REAL_S * TICKS_PER_REAL_S {
             w.step_ticks(1);
             c.act(&mut w);
         }

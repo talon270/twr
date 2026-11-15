@@ -23,13 +23,15 @@ use crate::{Rng, World, TICK_HZ, TIME_COMPRESSION_MILLI};
 pub const TICKS_PER_REAL_S: u64 = TICK_HZ as u64 * TIME_COMPRESSION_MILLI / 1000;
 /// Sim ticks in one real hour: 216,000.
 pub const TICKS_PER_REAL_H: u64 = 3600 * TICKS_PER_REAL_S;
-/// A Shift lasts 30 real minutes; after that nothing new spawns.
+/// The game has no time limit: Light, Normal, Peak and Surge spawn until you
+/// stop (removed 2026-11-11; at the 3x clock a 30-minute cut-off ended Peak
+/// after 1.5 game hours). Tests that need a bounded run use this as its length.
 pub const SHIFT_REAL_S: u64 = 30 * 60;
 /// Surge starts at Normal and climbs 10% every 2 real minutes (§ A2).
 pub const SURGE_START_PER_H: u64 = 53;
 pub const SURGE_STEP_REAL_S: u64 = 120;
 /// ponytail: rate cap so the per-tick draw stays a probability; B7 ends
-/// Surge at 3 incidents long before this (reached at 52 min, the 26th step).
+/// Surge on its third strike long before this (reached at 52 min, the 26th step).
 pub const SURGE_CAP_PER_H: u64 = 600;
 /// An arrival on stand shuts down and leaves after 2 real minutes.
 /// There is no turnaround into a departure: IGI's are 35-60 min, longer
@@ -250,13 +252,9 @@ impl Mode {
         }
     }
 
-    /// Does anything new spawn at `tick`?
-    pub fn open(self, tick: u64) -> bool {
-        match self {
-            Mode::Practice => false,
-            Mode::Surge => true,
-            _ => tick < SHIFT_REAL_S * TICKS_PER_REAL_S,
-        }
+    /// Does anything new spawn? Every mode but Practice, for as long as it runs.
+    pub fn open(self, _tick: u64) -> bool {
+        self != Mode::Practice
     }
 }
 
@@ -284,6 +282,9 @@ pub struct Schedule {
     /// direction's runways to clear. While it waits, new movements draw no
     /// runway (`rwy` is "") and queue.
     pub next: Option<Plan>,
+    /// Nothing spawns from this tick on. None in the game, which has no time
+    /// limit; the long tests set it to 30 real minutes so they can drain.
+    pub closes_at: Option<u64>,
     rng: Rng,
     used: BTreeSet<String>,
 }
@@ -291,7 +292,7 @@ pub struct Schedule {
 impl Schedule {
     pub fn new(seed: u64, mode: Mode) -> Self {
         // A distinct stream from the world's: same seed, different draws.
-        Schedule { mode, wind: weather::draw(seed), custom: None, next: None, rng: Rng::new(seed ^ 0x7AF1_C0DE_5EED_0B6), used: BTreeSet::new() }
+        Schedule { mode, wind: weather::draw(seed), custom: None, next: None, closes_at: None, rng: Rng::new(seed ^ 0x7AF1_C0DE_5EED_0B6), used: BTreeSet::new() }
     }
 
     /// The plan in force: the player's, else the wind's own pick.
@@ -308,7 +309,7 @@ impl Schedule {
         let p = ((u128::from(rate) << 64) / (2_000 * u128::from(TICKS_PER_REAL_H))) as u64;
         let (a, d) = (self.rng.next_u64(), self.rng.next_u64());
         let mut out = Vec::new();
-        if !self.mode.open(tick) {
+        if !self.mode.open(tick) || self.closes_at.is_some_and(|c| tick >= c) {
             return out;
         }
         for (hit, arrival) in [(a < p, true), (d < p, false)] {

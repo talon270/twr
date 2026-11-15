@@ -292,16 +292,23 @@ impl Ctl {
             }
         }
         self.lifts.retain(|l| l.tick.is_none_or(|t| now - t < 300 * 20));
-        // Departed aircraft leave; stopped arrivals vacate.
-        let before = w.aircraft.len();
-        w.aircraft.retain(|a| !matches!(a.phase, Phase::Departed(_)));
-        self.stats.departed += (before - w.aircraft.len()) as u32;
-        // Arrivals on stand leave (B6: the world shuts them down itself);
-        // record the tick each one vacates.
-        let before = w.aircraft.len();
-        let spawn = self.spawn;
-        w.aircraft.retain(|a| !(if spawn { a.phase == Phase::OnStand && a.callsign.starts_with('A') } else { a.phase == Phase::ShutDown }));
-        self.stats.on_stand += (before - w.aircraft.len()) as u32;
+        if self.spawn {
+            // The controller's own traffic: it spawns against MAX_ACTIVE, so
+            // departed aircraft leave and stopped arrivals vacate.
+            let before = w.aircraft.len();
+            w.aircraft.retain(|a| !matches!(a.phase, Phase::Departed(_)));
+            self.stats.departed += (before - w.aircraft.len()) as u32;
+            let before = w.aircraft.len();
+            w.aircraft.retain(|a| !(a.phase == Phase::OnStand && a.callsign.starts_with('A')));
+            self.stats.on_stand += (before - w.aircraft.len()) as u32;
+        } else {
+            // A shift's own traffic: the game never removes an aircraft, so
+            // neither does this. Finished ones are counted by phase (audit
+            // 2026-11-13, A6: pruning here proved "0 incidents" for a list
+            // the page does not have).
+            self.stats.departed = w.aircraft.iter().filter(|a| matches!(a.phase, Phase::Departed(_))).count() as u32;
+            self.stats.on_stand = w.aircraft.iter().filter(|a| a.phase == Phase::ShutDown).count() as u32;
+        }
         for a in &w.aircraft {
             if let Some(x) = &a.exit {
                 if a.phase == Phase::Holding && a.pos_mdm == x.vacate_mdm && self.seen_vacate.insert(a.callsign.clone()) {
@@ -645,6 +652,7 @@ pub fn run_shift(seed: u64, mode: twr_sim::Mode, wind: Option<twr_sim::weather::
     }
     // Watch the controller finish what the shift gave it, past 30:00.
     w.halt_on_end = false;
+    w.traffic.as_mut().expect("a shift").schedule.closes_at = Some(twr_sim::traffic::SHIFT_REAL_S * twr_sim::traffic::TICKS_PER_REAL_S);
     let mut c = Ctl::new(&w, seed);
     c.spawn = false;
     let mut most_conflicts = 0;

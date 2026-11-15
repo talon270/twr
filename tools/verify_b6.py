@@ -67,13 +67,13 @@ with sync_playwright() as pw:
     check(app(pg, "a.shift_mode()") == "normal" and app(pg, "a.count()") == 0, "Start: a Normal shift on an empty airport")
     check(re.search(r"\?mode=normal&seed=\d+$", pg.url) is not None, f"URL carries mode and seed: {pg.url}")
     check(pg.text_content("#rate") == "53/h", f"HUD rate {pg.text_content('#rate')!r}")
-    check(pg.text_content("#shift-clock-label") == "Shift left" and pg.text_content("#shift-clock") == "30:00", f"shift clock {pg.text_content('#shift-clock')!r}")
+    check(pg.text_content("#shift-clock-label") == "Running" and pg.text_content("#shift-clock") == "00:00", f"shift clock {pg.text_content('#shift-clock-label')!r} {pg.text_content('#shift-clock')!r}")
     check(ff_until(pg, "a.count() > 0"), "traffic appears")
     cs, corner, state = pg.text_content("#cs0"), pg.text_content("#wake0"), pg.text_content("#state0")
     check(OPS_RE.fullmatch(cs) is not None and re.fullmatch(r"[A-Z0-9]{4} [MHJ]", corner) is not None, f"first strip {cs} {corner!r}: {state}")
     check(state.startswith("Final ") or " · dep " in state, f"arrival on final or departure with its runway: {state!r}")
     t = app(pg, "a.real_s()")
-    check(pg.text_content("#shift-clock") == f"{(1800 - int(t)) // 60:02d}:{(1800 - int(t)) % 60:02d}", f"shift clock counts down: {pg.text_content('#shift-clock')} at {t:.0f} real s")
+    check(pg.text_content("#shift-clock") == f"{int(t) // 60:02d}:{int(t) % 60:02d}", f"shift clock counts up: {pg.text_content('#shift-clock')} at {t:.0f} real s")
     check(re.fullmatch(r"final \d+ · stands full \d+", pg.text_content("#queues")) is not None, f"HUD queues {pg.text_content('#queues')!r}")
 
     # ---- Replay: a link and the seed field give the same shift ----------
@@ -143,8 +143,11 @@ with sync_playwright() as pw:
     # ---- Surge -------------------------------------------------------------
     pg.select_option("#mode", "surge"); pg.fill("#seed-in", "3"); pg.click("#start"); frame(pg)
     check(pg.text_content("#rate") == "53/h" and pg.text_content("#shift-clock-label") == "Surge", "Surge starts at 53/h, clock counts up")
-    app(pg, f"a.fast_forward({10 * 60 * 60})"); frame(pg)
-    check(pg.text_content("#rate") == "85/h" and pg.text_content("#shift-clock") == "10:00", f"Surge at 10:00: {pg.text_content('#rate')}")
+    # Read the climb at 4:00, two 10% steps (53 -> 58.3 -> 64.13): idle, seed 3
+    # ends on its third strike at 479.5 real s, before 10:00.
+    app(pg, f"a.fast_forward({4 * 60 * 60})"); frame(pg)
+    check(pg.text_content("#rate") == "64/h" and pg.text_content("#shift-clock") == "04:00" and not app(pg, "a.over()"),
+          f"Surge at 4:00: {pg.text_content('#rate')} at {pg.text_content('#shift-clock')}, over {app(pg, 'a.over()')}")
 
     # ---- Both themes, and the bar fits ------------------------------------
     for theme in ("dark", "light"):

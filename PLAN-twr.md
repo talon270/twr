@@ -6,7 +6,7 @@ the reference game), grepped its inlined game script for its scheduling constant
 and queried OpenStreetMap (Overpass API) for every runway, taxiway, stand and
 holding point inside VIDP, VABB and VOBL. Its `/api/` was not touched; `robots.txt`
 disallows it. The reference game was not played, so nothing here claims how it feels.
-**Nothing below is implemented — this is the plan.**
+**Nothing below is implemented — this is the plan.** (Header kept as written. Status 2026-11-14: built; each part records its own "Built" section.)
 
 ---
 
@@ -2085,3 +2085,37 @@ All 27 items are in the code. This session finished R1.11 and R1.18, ran the reg
 
 - **The dpr 2 rAF gap of 33.3 ms is not comparable to the 16.7 ms recorded after the pulse fix.** Load was 7 to 8; no number here counts as a regression or as proof of none.
 - **No moving-state number exists from this run.** The earlier "after the pulse fix" figures (§ R1) are the latest valid ones.
+
+### Built 2026-11-13/14: the 2026-11-13 audit
+
+**No mode has a time limit, you end a shift, and a Surge ends on its third strike.** The audit text was not found on disk (`PLAN-verify-2026-11-14.md` A3); this section is written from the diff and from the code comments that cite it. Recorded 2026-11-15.
+
+| Item | What changed | Where |
+|---|---|---|
+| A1 | No time limit in Light, Normal or Peak; End shift button; movements best outside Surge is a rate (`86/h · 43 in 30:00`) with a 10-movement floor; schema 2 to 3, a v2 record outside Surge loads as a 30:00 shift | `traffic.rs` `Mode::open`, `score.rs` `end_shift`, `web/src/lib.rs`, `web/shell.html` `MIGRATIONS[2]`, `recordBests` |
+| A2 | `build.sh` copies the page to `docs/index.html`; it was one commit behind | `build.sh` |
+| A3 | The result dialog's first focus is its title, so the Enter that ended the shift does not restart it | `web/shell.html` `#res-title` |
+| A4 | A Surge strike is an incident or a no-clearance go-around; idle, seed 7 now ends at 6:28 (run 2026-11-15: 388 real s, 0 incidents, 3 no-clearance go-arounds; before: 111 real minutes, no end) | `score.rs` `strikes` |
+| A5 | The top bar wraps; as one row it needed 1,431 px, so Start sat off screen at 1024 px | `web/shell.html` `.bar` |
+| A6 | The test controller no longer removes a shift's own aircraft; pruning proved "0 incidents" for a list the page does not have | `tests/common/mod.rs` |
+| A7 | **Unknown.** Nothing in the code cites it | — |
+| A8 | Saved bests that are not objects are dropped on load | `web/shell.html` `load` |
+| A9 | The address bar names the shift that runs, so a link with no seed or a refused seed still replays | `web/shell.html` boot |
+| A10 | A button reached with Tab presses on Enter and Space; after a mouse click Enter still sends the clearance | `web/shell.html` key handler |
+| A11 | Page backups and `__pycache__/` are ignored by git | `.gitignore` |
+
+Also in the change: `?seed=` outside 0 to 4,294,967,295 is reported, not repaired (`linkSeed`); the long tests bound their traffic with `Schedule::closes_at` instead of a game time limit.
+
+**The strike rule broke one test, and that is fixed.** `b6_traffic.rs` ran an idle Surge for one real hour; with strikes it ended at 215 to 480 real s, `step_ticks` stopped, and the loop never ended. It now sets `halt_on_end = false`, as five other long tests do (`PLAN-verify-2026-11-14.md` A1).
+
+**Checked 2026-11-15.** `cargo test --release --workspace --no-fail-fast`: **157 passed, 0 failed, 0 ignored** in 23 result blocks; `b6_traffic` 6 of 6 in 36.49 s. `./build.sh`: `dist/index.html` 1,031,270 bytes, byte-identical to `docs/index.html`.
+
+**Browser checks, 2026-11-15: 21 of 21 scripts pass, after two script fixes.** Playwright 1.65.2 (pacman) needed `chromium_headless_shell-1255`, installed with your yes; before that every script exited 1 at launch. The first run: 19 passed; `verify_b6` and `verify_b7` failed, and both faults were in the scripts, which the change had edited but never run.
+
+| Script | First run | Cause | Fix | After |
+|---|---|---|---|---|
+| `verify_b6` | 24 PASS, 1 FAIL, crash | Idle, Surge seed 3 ends on its third strike at 479.5 real s, so "Surge at 10:00: 85/h" read a stopped clock (71/h) and the result dialog blocked the next click | Read the climb at 4:00 (53 to 64/h, two 10% steps) and assert the Surge is not over | 34/34 |
+| `verify_b7` | 6 PASS, 4 FAIL, crash | Normal seed 3 makes 7 movements by 30:00 under the script's clear-arrivals-only controller, under the 10 a rate best needs; the last 600-tick jump also overshot to 1803 s | Seed 1 (12 movements at 30:00; seed 3 made 7, seed 5 made 13); the last jump lands on 30:00 | 26 PASS, 1 FAIL |
+| `verify_b7` | the A8 check | The check expected a mode saved as a string to load as `{}`; the code drops it, as its comment says | Expect no `peak` key | 27/27 |
+
+`verify_ui4` passed 17/17 on 3 runs, so its known 1-in-3 flake did not show; 3 runs cannot rule it out. `perf_80.py` was not run. Also fixed: a comment in `traffic.rs` (`SURGE_CAP_PER_H`) still said Surge ends at 3 incidents.

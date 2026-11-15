@@ -27,7 +27,7 @@
 use twr_sim::airport::EdgeKind;
 use twr_sim::conflict::INCIDENT_MARK_S;
 use twr_sim::route::Route;
-use twr_sim::traffic::{SHIFT_REAL_S, TICKS_PER_REAL_S};
+use twr_sim::traffic::TICKS_PER_REAL_S;
 use twr_sim::{Phase, World, TICK_HZ};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
@@ -267,14 +267,6 @@ impl App {
         (self.world.tick / TICKS_PER_REAL_S) as f64
     }
 
-    /// Real seconds a Shift lasts; 0 for Practice and Surge, which are open.
-    pub fn shift_len_s(&self) -> f64 {
-        match self.world.mode() {
-            twr_sim::Mode::Practice | twr_sim::Mode::Surge => 0.0,
-            _ => SHIFT_REAL_S as f64,
-        }
-    }
-
     /// Arrivals held by approach until their final is free.
     pub fn final_queue(&self) -> usize {
         self.world.traffic.as_ref().map_or(0, |t| t.final_queue.len())
@@ -315,6 +307,18 @@ impl App {
     /// Real seconds from the start to the end of the shift; 0 until it ends.
     pub fn held_s(&self) -> f64 {
         self.world.score.over.map_or(0.0, |t| (t / TICKS_PER_REAL_S) as f64)
+    }
+
+    /// End shift: no mode has a time limit, so the player ends it. False in
+    /// Practice, which is unscored and never ends.
+    pub fn end_shift(&mut self) -> bool {
+        self.world.end_shift()
+    }
+
+    /// Surge strikes so far: incidents plus go-arounds for no landing
+    /// clearance. The third ends a Surge.
+    pub fn strikes(&self) -> usize {
+        self.world.strikes()
     }
 
     /// Departed or shut down: done, its strip can go.

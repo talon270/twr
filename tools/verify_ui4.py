@@ -17,10 +17,10 @@ def nums(s): return [float(x) for x in re.findall(r"-?\d+\.?\d*", s)]
 
 def end_shift(pg):
     pg.select_option("#mode", "light"); pg.fill("#seed-in", "3"); pg.click("#start"); pg.wait_for_timeout(80)
-    # stop just short of the end, so the dialog opens on a real frame we can watch
-    while not app(pg, "a.over()"):
-        app(pg, "a.fast_forward(6000)")
-        pg.wait_for_timeout(16)
+    # No mode has a time limit (audit 2026-11-13, A1): play a while, then
+    # End shift, clicked, so the dialog opens on a real frame we can watch.
+    app(pg, "a.fast_forward(6000)")
+    pg.click("#end-shift")
 
 with sync_playwright() as pw:
     b = pw.chromium.launch()

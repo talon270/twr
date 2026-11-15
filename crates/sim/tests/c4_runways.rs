@@ -17,6 +17,7 @@ fn shift(seed: u64, mode: Mode, wind: Wind) -> World {
     let mut w = World::shift(seed, mode);
     w.traffic.as_mut().unwrap().schedule.wind = wind;
     w.halt_on_end = false;
+    w.traffic.as_mut().expect("a shift").schedule.closes_at = Some(twr_sim::traffic::SHIFT_REAL_S * twr_sim::traffic::TICKS_PER_REAL_S);
     w
 }
 

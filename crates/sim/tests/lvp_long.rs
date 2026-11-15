@@ -20,6 +20,7 @@ fn ten_peak_shifts_under_lvp_raise_nothing() {
         let mut w = World::shift(seed, Mode::Peak);
         w.set_lvp(true);
         w.halt_on_end = false;
+        w.traffic.as_mut().expect("a shift").schedule.closes_at = Some(twr_sim::traffic::SHIFT_REAL_S * twr_sim::traffic::TICKS_PER_REAL_S);
         let mut c = Ctl::new(&w, seed);
         c.spawn = false;
         for _ in 0..2 * TICKS_PER_REAL_H {

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Build twr into one self-contained page: dist/index.html.
+# Build twr into one self-contained page: dist/index.html, copied to
+# docs/index.html for GitHub Pages.
 #
 # The wasm is inlined as base64 and started with initSync, because Chrome
 # refuses to fetch() a .wasm file from file:// (PLAN-twr.md § A4). The page
@@ -62,6 +63,11 @@ tmp="$page.tmp"
   sed "1,/$MARKER/d" "$SHELL_HTML"
 } > "$tmp"
 mv "$tmp" "$page"
+# GitHub Pages serves main:/docs. Copying here, in the build, keeps the
+# published page from falling behind the code (audit 2026-11-13, A2: it was
+# one commit behind). Nothing is published until docs/ is committed and pushed.
+mkdir -p docs
+cp "$page" docs/index.html
 
 raw=$(wc -c < "target/$TARGET/release/twr_web.wasm")
 opt=$(wc -c < "$OUT/twr_web_bg.opt.wasm")

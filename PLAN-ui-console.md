@@ -1,7 +1,7 @@
 # Tower console port — plan
 Written 2026-11-10, 21:44 IST, against `web/shell.html` (899 lines, newest backup `shell.backup-20261110-142457.html`) and Astra's mockup round in `research/out/ui-design/` (DESIGN.md and a.html, both 20:09–20:20 today).
 Method: read `DESIGN.md` in full (recommendation, A section, interaction ledger, motion contract, "What the current shell does worse"), then grepped `shell.html` and `crates/web/src/lib.rs` for each claim it makes. Nothing was run. The mockups were not opened, and Astra's screenshots were not re-viewed.
-**Nothing below is implemented — this is the plan.** The session had a hard stop at 21:58, so it ends with a handoff (last section).
+**Nothing below is implemented — this is the plan.** (Header kept as written. Status 2026-11-14: built; each part records its own "Built" section.) The session had a hard stop at 21:58, so it ends with a handoff (last section).
 
 ## Part A — findings, ranked
 

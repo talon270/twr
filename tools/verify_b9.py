@@ -159,9 +159,8 @@ with sync_playwright() as pw:
     check(picked and up and want in ("11L", "09") and want in ph, f"east departure {app(pg, f'a.callsign({i})')} ({app(pg, f'a.wake({i})')}) took off from {want}: {ph}")
 
     # ---- the result dialog repeats the wind ----------------------------------
-    while not app(pg, "a.over()"):
-        app(pg, "a.fast_forward(6000)")
-    frame(pg); frame(pg)
+    # No mode has a time limit (audit 2026-11-13, A1): End shift, clicked.
+    pg.click("#end-shift"); frame(pg); frame(pg)
     sub = pg.text_content("#res-sub")
     check(f"wind {wind}, east flow" in sub, f"result names the wind: {sub!r}")
     ch_row = pg.text_content("#res-rows")

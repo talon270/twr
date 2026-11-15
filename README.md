@@ -19,16 +19,17 @@ kind.
 Rebuild after a change:
 
 ```sh
-./build.sh                                        # dist/index.html
-cargo test --release --workspace                  # 143 tests, about 5 min
+./build.sh                                        # dist/index.html, copied to docs/index.html
+cargo test --release --workspace                  # 157 tests, about 5 min
 python3 tools/verify_b9.py /tmp/twr-shots         # Playwright, real clicks
 cargo run -p twr-osm -- VIDP                      # re-extract after editing data/vidp.overrides.toml
 ```
 
 `build.sh` needs the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` at
 the version in `Cargo.lock`, and `wasm-opt` (binaryen). It checks the
-wasm-bindgen version before it builds. `tools/README.md` lists every verify
-script.
+wasm-bindgen version before it builds. It also copies the page to
+`docs/index.html`, which GitHub Pages serves from `main`: commit and push
+`docs/` to publish. `tools/README.md` lists every verify script.
 
 ## Controls
 
@@ -37,6 +38,7 @@ script.
 | Click an aircraft or its strip | select it |
 | Drag, wheel | pan, zoom (zoom springs; jumps under reduced motion) |
 | `P` | push back from the stand |
+| `S` | push back, then taxi on the previewed route |
 | `T`, click a stand, hold or runway entry, `Enter` | taxi on the previewed route |
 | click a taxiway while taxiing | route via it; right-click avoids it; click again to undo |
 | `H` | hold position |
@@ -49,14 +51,28 @@ script.
 | `J`, click a marked point | hold at a point ahead on the route; `Enter` continues |
 | `Y`, click an aircraft | give way to that aircraft at the junction; it releases itself once the other has passed |
 | `-` / `=`, `B` | taxi slower / faster; backtrack on the runway |
-| `Space` | pause |
+| `Space` | pause (on a button reached with `Tab`, `Space` and `Enter` press it) |
+| End shift | end a Light, Normal, Peak or Surge shift and show the result |
 | `Esc` | cancel, deselect, close the result |
 
 | Mode | Traffic | Ends |
 |---|---|---|
 | Practice | 2 aircraft, west flow, calm | never; no score |
-| Light / Normal / Peak | 27 / 53 / 84 movements per real hour | 30:00 real |
-| Surge | 53 per real hour, plus 10% every 2 minutes | the third incident |
+| Light / Normal / Peak | 27 / 53 / 84 movements per real hour | when you press End shift; no time limit |
+| Surge | 53 per real hour, plus 10% every 2 minutes | the third strike, or End shift |
+
+**A Surge strike is an incident or a go-around for no landing clearance.**
+Incidents alone let a Surge run for ever if you touched nothing: seed 7 ran
+111 real minutes idle with no end. The no-clearance go-around is the one
+go-around the score already blames on you; idle, seed 7 now ends at 6:28 on
+three of them. Pilot and weather go-arounds stay challenges, not strikes.
+
+**The movements best outside Surge is a rate.** With no time limit, the
+longest sitting would hold a count record, so Light, Normal and Peak compare
+movements per real hour, and the record prints its count and length beside
+the rate: "86/h · 43 in 30:00". It needs 10 movements, as the delay best
+does; above that a short lucky burst can still flatter the rate. Surge keeps
+the count, since its third strike bounds its length.
 
 `?mode=peak&seed=7` replays a shift: same seed, same wind, same traffic.
 **Practice lets you choose fog.** Use the Fog control in the wind box to turn
@@ -96,7 +112,7 @@ meaning. Peak mode is 84 per real hour, IGI's measured peak.
 
 **The score is three numbers, never a blend.** Movements (beside what the
 shift offered), delay you caused, and incidents print side by side. A
-30-minute Peak shift offered between 35 and 58 movements across 10 seeds, so
+30-minute Peak sitting offered between 35 and 58 movements across 10 seeds, so
 "40 movements" means nothing without "of 42 offered".
 
 **Delay counts only what you could have cleared.** A departure waiting out a
@@ -157,7 +173,7 @@ runway ahead is refused, with the metres in the message.
 | Takeoff run: A320neo ~2,030 m, 777-300ER ~3,100 m (Airbus and Boeing charts, read by eye, ±100–150 m, at MTOW) | MTOW for every departure; a lighter aircraft needs less | a weight model (1.1) |
 | Climb 175 kt and approach 136 kt match the A320neo (EUROCONTROL, FAA) | one speed set for every type: taxi 10 m/s, push 1 m/s, 2 m/s² to 75 m/s rotation | per-type speeds; VR is a gap for every type in the research |
 | Radio telephony for 68 operators (FAA JO 7340.2P) | pilot go-arounds 5%, windshear 3% on gusty shifts | — |
-| Landing roll inside DIAL's 40–45 s runway occupancy | 60 s stand grace, 60 s "delayed" threshold, Surge ends at 3 incidents (your call) | — |
+| Landing roll inside DIAL's 40–45 s runway occupancy | 60 s stand grace, 60 s "delayed" threshold, Surge ends at 3 strikes (3 is your call; counting no-clearance go-arounds is the 2026-11-13 audit's) | — |
 | AD 2.22 VIII sets the 2 NM (3,704 m) LVP clearance deadline | 5 NM final spacing, plus an empty LSA before the next arrival joins; set from the sim's LSA clearance timing | an LVP rate for IGI; ten forced-LVP Peak shifts run clean under the test controller, which is not a measured rate |
 | Six AD 2.24 LSA charts, traced as 22 vector stations in `data/vidp.lsa.csv` | straight edges between stations, scaled by each chart's runway fill against OSM because the scale bars disagree with the runway lengths | surveyed LSA boundaries; these are chart shapes mapped to the sim, not surveyed polygons |
 | AD 2.22 VIII Tables 2–3 supply 89 west and 92 east taxiway names in `data/vidp.lvp.csv` | a named taxiway outside the flow's set costs 4× its length; the graph lacks F6, H1, H6, Link 19 west and D8, D9, F6, G1, G2, Link 19 east | add the missing taxiways to the airport graph |
@@ -177,9 +193,11 @@ Start or Esc closes it; the sim is held until then. Automated browsers
 `?title=1` to force it.
 
 **LVP bests have their own key.** The page stores only your theme and personal
-bests in `localStorage` under `twr.v1` (schema 2). Fog shifts use `<mode>-lvp`
-in the existing `bests` map, so clear and fog shifts do not compete; the
-schema stays at 2. It sends nothing anywhere.
+bests in `localStorage` under `twr.v1` (schema 3). Fog shifts use `<mode>-lvp`
+in the existing `bests` map, so clear and fog shifts do not compete. Schema 3
+stores each movements best with its length in real seconds; a v2 record
+outside Surge loads as a 30:00 shift, which is what every one of them was. It
+sends nothing anywhere.
 
 BLR and BOM layouts, per-type speeds and the
 remaining research runs are planned for 1.1 (`PLAN-twr.md`).

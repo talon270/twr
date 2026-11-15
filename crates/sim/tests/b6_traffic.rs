@@ -76,10 +76,10 @@ fn surge_ramps_and_shifts_close() {
         println!("surge minute {:>2}: {got:.1}/h", k * 2);
         assert!((got - want).abs() <= 1.0, "minute {}: {got} against {want:.1}", k * 2);
     }
-    // Nothing falls due after 30 real minutes of a Shift.
+    // A Shift has no time limit: movements still fall due after 30 real minutes.
     let dues = run_schedule(5, Mode::Peak, 1);
     let end = 30 * 60 * TICKS_PER_REAL_S;
-    assert!(dues.iter().any(|d| d.tick < end) && dues.iter().all(|d| d.tick < end));
+    assert!(dues.iter().any(|d| d.tick < end) && dues.iter().any(|d| d.tick >= end));
 }
 
 /// Leaders on aircraft `i`'s final and the gap to each, metres; the same
@@ -108,9 +108,12 @@ fn gaps(w: &World, i: usize) -> Vec<(f64, f64)> {
 #[test]
 fn spacing_on_final_and_free_stands_with_nobody_at_the_controls() {
     for seed in [1, 2, 3] {
-        // Surge, because a Shift closes at 30 min: by then Peak has put 21
+        // Surge, for its climbing rate: at 30 min Peak had put only 21
         // departures on IGI's 115 stands. Surge passes 115 inside the hour.
         let mut w = World::shift(seed, Mode::Surge);
+        // An idle Surge ends on its third strike (215 to 480 real s); this
+        // test checks spacing, not scoring, so keep the world ticking.
+        w.halt_on_end = false;
         let mut was_final = BTreeSet::new();
         let (mut entries, mut rejoins, mut most_queued, mut stands_full) = (0, 0, 0, 0);
         let spawn = -((FINAL_SPAWN_M * MDM_PER_M) as i64);

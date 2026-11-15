@@ -2,8 +2,8 @@
 //!   · Score: movements, delay you caused, the aircraft that waited; never
 //!     blended into one number (PLAN-twr.md Phase 0, § B7)
 //!   · the delay rules: which waits count against you, tick by tick
-//!   · the end of a shift: 30:00 real for Light / Normal / Peak, the third
-//!     incident for Surge; Practice never ends
+//!   · the end of a shift: you end Light / Normal / Peak (End shift); a
+//!     Surge ends on its third strike or when you end it; Practice never ends
 //!
 //! Incidents and challenges are not kept here: the monitor's incident log
 //! and the go-around log already hold them, and a second count could only
@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use crate::aircraft::{Aircraft, Phase};
 use crate::arrival::GoAround;
 use crate::conflict::on_runway;
-use crate::traffic::{Mode, SHIFT_REAL_S, TICKS_PER_REAL_S};
+use crate::traffic::Mode;
 use crate::{World, TICK_HZ};
 
 /// A departure is ready to push this long after it fell due, in game
@@ -25,7 +25,10 @@ pub const STAND_GRACE_S: u64 = 60;
 /// seconds. Without it every aircraft counts: the controller in the B7 tests
 /// "delayed" 22 of 22, each for the tick between vacating and T. `authored`.
 pub const DELAYED_OVER_S: u64 = 60;
-/// Surge ends on the tick of this incident (§ A2; confirmed 2026-11-07).
+/// Surge ends on the tick of this strike (§ A2; confirmed 2026-11-07).
+/// A strike is an incident or a go-around for no landing clearance: without
+/// the second kind, a Surge you never touch cannot end (audit 2026-11-13,
+/// A4: 111 real minutes idle, still running).
 pub const SURGE_INCIDENTS: usize = 3;
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -105,6 +108,23 @@ impl World {
         self.go_arounds.iter().filter(|g| g.why.challenge()).count()
     }
 
+    /// Surge strikes: incidents, plus go-arounds for no landing clearance,
+    /// the one go-around the score already blames on you.
+    pub fn strikes(&self) -> usize {
+        self.monitor.incidents.len() + self.go_arounds.iter().filter(|g| g.why == GoAround::NoClearance).count()
+    }
+
+    /// End the shift now, as the third strike ends a Surge. No mode has a
+    /// time limit, so this is how Light, Normal and Peak reach their result.
+    /// Practice is unscored and has no end; a shift already over keeps its tick.
+    pub fn end_shift(&mut self) -> bool {
+        let scored = self.traffic.as_ref().is_some_and(|t| t.schedule.mode != Mode::Practice);
+        if scored && self.score.over.is_none() {
+            self.score.over = Some(self.tick);
+        }
+        self.score.over.is_some()
+    }
+
     /// Movements the shift has offered so far: everything that fell due,
     /// spawned or still queued.
     pub fn offered(&self) -> usize {
@@ -134,12 +154,7 @@ impl World {
             *self.score.waits.entry(cs).or_default() += 1;
         }
 
-        let end = match mode {
-            Mode::Practice => false,
-            Mode::Surge => self.monitor.incidents.len() >= SURGE_INCIDENTS,
-            _ => self.tick >= SHIFT_REAL_S * TICKS_PER_REAL_S,
-        };
-        if end && self.score.over.is_none() {
+        if mode == Mode::Surge && self.strikes() >= SURGE_INCIDENTS && self.score.over.is_none() {
             self.score.over = Some(self.tick);
         }
     }

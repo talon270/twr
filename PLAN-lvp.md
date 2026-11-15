@@ -18,7 +18,7 @@ against the names in `data/vidp.twr`, and the taxiway length outside the LVP
 sets. Nothing was run in the sim; every timing below that says **estimate** is
 arithmetic on sim constants, and step 2 replaces it with a measurement.
 
-**Nothing below is implemented — this is the plan.**
+**Nothing below is implemented — this is the plan.** (Header kept as written. Status 2026-11-14: built; each part records its own "Built" section.)
 
 ---
 

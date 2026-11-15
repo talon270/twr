@@ -190,8 +190,12 @@ with sync_playwright() as pw:
         # Dialog on a phone-width window, at the end of a Light shift.
         pg.set_viewport_size({"width": 400, "height": 800})
         pg.select_option("#mode", "light"); pg.fill("#seed-in", "3"); pg.click("#start"); frame(pg)
-        while not app(pg, "a.over()"):
+        # Paused, so frames add no time; 30 real minutes; then End shift,
+        # clicked (no mode has a time limit, audit 2026-11-13 A1).
+        pg.keyboard.press(" "); frame(pg)
+        for _ in range(18):
             app(pg, "a.fast_forward(6000)")
+        pg.click("#end-shift")
         frame(pg, 4)
         box = pg.locator("#result").bounding_box()
         sub = pg.text_content("#res-sub")

@@ -6,3 +6,6 @@
 /.claude/
 /S/
 /*.png
+# Timestamped page backups and Python caches stay local (audit 2026-11-13, A11).
+/web/shell.backup-*.html
+__pycache__/
